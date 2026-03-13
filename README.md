@@ -100,6 +100,20 @@ y el Omnissiah guía todas las operaciones.
 
 ---
 
+## ☠ Uninstall / Desinstalar
+
+```bash
+bash uninstall.sh
+```
+
+Removes mechcode from PATH, restores your previous `~/.claude/CLAUDE.md` from backup
+(or removes it if no backup exists), deletes config, and cleans shell aliases.
+
+Elimina mechcode del PATH, restaura tu `~/.claude/CLAUDE.md` previo desde backup
+(o lo elimina si no había backup), borra la config y limpia los alias del shell.
+
+---
+
 ## ◈ Contributing / Contribuir
 
 PRs are welcome in the name of the Omnissiah.
