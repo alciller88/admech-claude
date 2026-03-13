@@ -127,7 +127,7 @@ remove_shell_config() {
         if $in_block; then
             # End of block: next non-empty line that doesn't look like our config
             case "$line" in
-                "alias mech="*|"complete "*mech*|"_mech_completions"*|"    "*COMP*|"    "*commands=*|"    "*themes=*|"}"*|"set -gx PATH"*"/.local/bin"*|"export PATH="*"/.local/bin"*|"")
+                "alias mech="*|"# "*|"complete "*mech*|"compdef "*mech*|"_mech_completions"*|*"COMP"*|*"commands"*|*"themes"*|*"CURRENT"*|*"_describe"*|*"words["*|"}"*|"set -gx PATH"*"/.local/bin"*|"export PATH="*"/.local/bin"*|"")
                     continue
                     ;;
                 *)
@@ -189,7 +189,8 @@ main() {
 
     echo -e -n "${ORANGE}  ¿Proceder con la desvinculación? / Proceed with unbinding? [y/N]: ${RESET}"
     read -r confirm
-    if [[ "${confirm,,}" != "y" && "${confirm,,}" != "yes" && "${confirm,,}" != "si" && "${confirm,,}" != "sí" ]]; then
+    confirm=$(echo "$confirm" | tr '[:upper:]' '[:lower:]')
+    if [[ "$confirm" != "y" && "$confirm" != "yes" && "$confirm" != "si" && "$confirm" != "sí" ]]; then
         log_info "Rito cancelado. La Forja permanece activa. / Rite cancelled. Forge remains active."
         exit 0
     fi

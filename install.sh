@@ -147,7 +147,8 @@ backup_claude_md() {
         echo ""
         echo -e -n "${ORANGE}  ¿Continuar? / Continue? [y/N]: ${RESET}"
         read -r confirm
-        if [[ "${confirm,,}" != "y" && "${confirm,,}" != "yes" && "${confirm,,}" != "si" && "${confirm,,}" != "sí" ]]; then
+        confirm=$(echo "$confirm" | tr '[:upper:]' '[:lower:]')
+        if [[ "$confirm" != "y" && "$confirm" != "yes" && "$confirm" != "si" && "$confirm" != "sí" ]]; then
             log_info "Rito abortado por el Magos — Rite aborted by Magos"
             exit 0
         fi
@@ -213,11 +214,28 @@ alias mech="mechcode"
 complete -c mech -f -a "on enable off disable ascii quiet full stealth status theme lore esp eng help" -d "Mechanicus command"
 '
             ;;
+        zsh)
+            alias_block='
+# ═══⚙═══ Mechanicus Terminal — Adeptus Mechanicus Wrapper ═══⚙═══
+alias mech="mechcode"
+# Zsh completions
+_mech_completions() {
+    local commands=(on enable off disable ascii quiet full stealth status theme lore esp eng --help)
+    local themes=(rojo verde hueso golden)
+    if (( CURRENT == 2 )); then
+        _describe '\''command'\'' commands
+    elif (( CURRENT == 3 )) && [[ "${words[2]}" == "theme" ]]; then
+        _describe '\''theme'\'' themes
+    fi
+}
+compdef _mech_completions mech
+'
+            ;;
         *)
             alias_block='
 # ═══⚙═══ Mechanicus Terminal — Adeptus Mechanicus Wrapper ═══⚙═══
 alias mech="mechcode"
-# Bash/Zsh completions
+# Bash completions
 _mech_completions() {
     local commands="on enable off disable ascii quiet full stealth status theme lore esp eng --help"
     local themes="rojo verde hueso golden"
