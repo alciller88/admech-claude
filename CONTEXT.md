@@ -211,26 +211,101 @@ Canónica: "Even in death I serve the Omnissiah."
 | Dorado Omnissiah | #FFD700 | \033[93m | Títulos, nombre Omnissiah, éxito máximo |
 
 ═══════════════════════════════════════════════════════════════
-## X. COMANDOS RÁPIDOS
+## X. ARQUITECTURA v2 — TMUX + HOOKS + MONITOR
+═══════════════════════════════════════════════════════════════
+
+### Arquitectura de paneles tmux
+```
+┌──────────────────────────────────────┬──────────────────────┐
+│  Claude Code (TUI nativo, intacto)   │  servoskull_monitor   │
+│                                      │  ┌────────────────┐  │
+│  Claude Code hooks ──────────────────│──│  SERVO-SKULL   │  │
+│  escriben estado a                   │  │  (animado)     │  │
+│  ~/.mechcode_state.json              │  └────────────────┘  │
+│                                      │  STATE: THINKING psi │
+│                                      │  SCANNING DATA...    │
+│                                      │  -- SERVITORS --     │
+│                                      │  psi Agent-1         │
+│                                      │  Rites: 12           │
+│                                      │  Heresies: 3         │
+└──────────────────────────────────────┴──────────────────────┘
+           tmux pane izquierdo           pane derecho (32 cols)
+```
+
+### Hooks de Claude Code registrados
+Los hooks se configuran en `~/.claude/settings.json` y disparan
+`mechcode_hook.py`, que escribe el estado a `~/.mechcode_state.json`.
+
+| Hook Event | Trigger | Estado resultante |
+|------------|---------|-------------------|
+| PreToolUse | Antes de cada tool call | THINKING + mensaje del tool |
+| PostToolUse | Tool completado con éxito | SUCCESS |
+| PostToolUseFailure | Tool fallido | ERROR |
+| SubagentStart | Agente spawneado | Nuevo Servitor en la jerarquía |
+| SubagentStop | Agente finalizado | Servitor eliminado |
+| SessionStart | Sesión iniciada/resumida | IDLE + reset stats |
+| Stop | Claude termina de responder | IDLE |
+
+### Mapeo de tools a mensajes Mechanicus
+| Tool | ES | EN |
+|------|----|----|
+| Read | ESCANEANDO PERGAMINO DE DATOS | SCANNING DATA-SCROLL |
+| Write | INSCRIBIENDO EN EL REGISTRO ETERNO | INSCRIBING THE ETERNAL REGISTRY |
+| Edit | MODIFICANDO ARTEFACTO SAGRADO | MODIFYING SACRED ARTIFACT |
+| Bash | EJECUTANDO RITO BINARIO | RITE OF BINARY EXECUTION |
+| Glob | EXPLORANDO LA NOOSFERA | SCOURING THE NOOSPHERE |
+| Grep | BUSCANDO EN LOS REGISTROS | SEARCHING THE ARCHIVES |
+| Agent | INVOCANDO SERVO-CRANEO | SUMMONING SERVO-SKULL |
+| WebFetch | EXPLORADOR ENVIADO A LA NOOSFERA | EXPLORATOR FLEET DISPATCHED |
+| WebSearch | COMUNION NOOSFERCA | NOOSPHERIC COMMUNION INITIATED |
+
+### Jerarquía visual de agentes (Servitors)
+| Agent Type | Designación ES | Designación EN |
+|------------|---------------|----------------|
+| Explore | SCRYERSKULL — EXPLORADOR | SCRYERSKULL — EXPLORER |
+| Plan | DATA-SKULL — ESTRATEGA | DATA-SKULL — STRATEGIST |
+| general-purpose | MONO-TASK INFOSLAVE | MONO-TASK INFOSLAVE |
+| claude-code-guide | LEXMECHANIC | LEXMECHANIC |
+
+### Servo-cráneo: modos de renderizado
+| Modo | Canvas | Líneas | Uso |
+|------|--------|--------|-----|
+| Compacto | 28x24 px | 12 | Sidebar tmux (panel derecho) |
+| Completo | 60x48 px | 24 | Standalone, instalación |
+
+### Estados del servo-cráneo
+| Estado | Lens | Tinte | Trigger |
+|--------|------|-------|---------|
+| IDLE | Apagado (gris) | Normal | Sin actividad |
+| THINKING | Naranja (anillos expansivos) | Normal | PreToolUse |
+| THINKING_2 | Naranja brillante | Normal | Animación cíclica |
+| THINKING_3 | Blanco + cables naranja | Normal | Actividad máxima |
+| ERROR | Rojo | Tinte rojo global | PostToolUseFailure |
+| SUCCESS | Verde | Tinte dorado/verde | PostToolUse |
+
+═══════════════════════════════════════════════════════════════
+## XI. COMANDOS RÁPIDOS
 ═══════════════════════════════════════════════════════════════
 
 | Comando | Acción |
 |---------|--------|
-| `mech on` / `mech enable` | Activa modo Mechanicus completo |
-| `mech off` / `mech disable` | Desactiva — output nativo de Claude Code |
-| `mech ascii` | Toggle servo-cráneo ASCII on/off |
-| `mech quiet` | Solo sustituciones, sin ASCII ni litanías |
-| `mech full` | Modo completo: ASCII + colores + litanías + sustituciones |
-| `mech stealth` | Modo oficina: sustituciones mínimas, sin arte, sin litanías |
-| `mech status` | Config actual + stats (herejías purgadas, ritos completados, uptime) |
+| `mech <claude args>` | Lanza tmux con claude + sidebar servo-skull |
+| `mech on` / `mech enable` | Activa modo Mechanicus |
+| `mech off` / `mech disable` | Desactiva — passthrough directo a claude |
+| `mech status` | Config + stats (rites, heresies, tools, uptime) |
 | `mech theme <rojo/verde/hueso/golden>` | Cambia paleta de color |
 | `mech lore` | Litanía aleatoria del Cant Mechanicus |
-| `mech --help` | Ayuda en formato tecno-sacerdotal |
+| `mech esp` | Idioma: español |
+| `mech eng` | Idioma: inglés |
+| `mech sidebar <N>` | Ancho del sidebar (20-60 cols) |
+| `mech kill` | Termina la sesión tmux |
+| `mech --help` | Ayuda completa |
 
-Config persistida en `~/.mechcode_config.json`.
+Config: `~/.mechcode_config.json`
+Estado compartido: `~/.mechcode_state.json`
 
 ═══════════════════════════════════════════════════════════════
-## XI. DISTRIBUCIÓN Y LICENCIA
+## XII. DISTRIBUCIÓN Y LICENCIA
 ═══════════════════════════════════════════════════════════════
 
 **Instalación para usuarios finales — one-liner:**
@@ -241,6 +316,7 @@ curl -sSL https://raw.githubusercontent.com/TU_USUARIO/mechanicus-terminal/main/
 **Requisitos previos del usuario:**
 - Claude Code instalado: `npm install -g @anthropic-ai/claude-code`
 - Python 3.8+
+- tmux (para sidebar de servo-skull)
 - Cuenta Anthropic con acceso a Claude Code
 - bash / zsh / fish
 

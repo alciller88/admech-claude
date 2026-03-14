@@ -103,33 +103,36 @@ Estructura obligatoria:
 9. Pie: "Forjado en el nombre del Omnissiah. Mars Forge Prime. M41."
 
 ═══════════════════════════════════════════════════════════════
-## III. ARQUITECTURA DE TRANSFORMACIÓN
+## III. ARQUITECTURA — TMUX + HOOKS + MONITOR
 ═══════════════════════════════════════════════════════════════
 
-[Usuario] → [mechcode intercepta cmd mech] → pasa resto a [claude]
-                                                       ↓
-[Terminal] ← [colores ANSI] ← [sustituciones] ← [stdout raw]
-                ↑
-         [servo-skull frame según estado]
+```
+┌──────────────────────────────────────┬──────────────────────┐
+│  Claude Code (TUI nativo, intacto)   │  servoskull_monitor   │
+│                                      │  [servo-skull art]    │
+│  Claude Code hooks ──────────────────│──> estado animado     │
+│  escriben a ~/.mechcode_state.json   │  [agent hierarchy]    │
+│                                      │  [stats en vivo]      │
+└──────────────────────────────────────┴──────────────────────┘
+           tmux pane izquierdo           pane derecho (32 cols)
+```
 
-Motor de sustitución (orden estricto):
-1. Detectar tipo de línea: error / success / thinking / warning / info / code
-2. Aplicar sustitución ES + EN de tabla CONTEXT.md sección VII
-3. Aplicar color ANSI según tipo y tema activo (paleta sección IX)
-4. Añadir prefijo [TIPO//] + símbolo canónico
-5. Mostrar frame de servo-cráneo apropiado si modo lo requiere
+Componentes del pipeline:
+1. mechcode.py lanza sesión tmux con dos paneles
+2. Panel izquierdo: claude ejecuta con TUI nativo (sin interceptar)
+3. Panel derecho: servoskull_monitor.py (ANSI loop, refresco 200-500ms)
+4. Claude Code hooks (settings.json) disparan mechcode_hook.py
+5. mechcode_hook.py escribe estado a ~/.mechcode_state.json
+6. Monitor lee estado y actualiza servo-skull + jerarquía de agentes
 
 ═══════════════════════════════════════════════════════════════
 ## IV. MODOS DE OPERACIÓN
 ═══════════════════════════════════════════════════════════════
 
-| Modo | ASCII | Colores | Sustituciones | Litanías | Uso |
-|------|-------|---------|--------------|---------|-----|
-| full | ✓ | ✓ | ✓ | ✓ | Default — experiencia completa |
-| quiet | ✗ | ✓ | ✓ | ✗ | Sin arte, con color y texto |
-| ascii | ✓ | ✓ | ✓ | ✗ | Arte sí, litanías no |
-| stealth | ✗ | ✗ | mínimas | ✗ | Entornos hostiles / oficinas |
-| off | ✗ | ✗ | ✗ | ✗ | Indistinguible de claude nativo |
+| Modo | Sidebar | Claude Code | Uso |
+|------|---------|-------------|-----|
+| full | Servo-skull animado + stats | TUI nativo via tmux | Default |
+| off | Sin sidebar | Passthrough directo a claude | Nativo |
 
 Modo por defecto: full
 
@@ -137,28 +140,54 @@ Modo por defecto: full
 ## V. COMANDOS RÁPIDOS — ESPECIFICACIÓN TÉCNICA
 ═══════════════════════════════════════════════════════════════
 
-Interceptados por mechcode ANTES de pasar args a claude:
+Interceptados por mechcode ANTES de lanzar tmux:
 
-mech on|enable      → mode=full, servo-skull IDLE + "⚙ FORJA ACTIVADA ⚙"
-mech off|disable    → mode=off, "PROTOCOLO SUSPENDIDO — MODO SILENCIO"
-mech ascii          → toggle ascii on/off
-mech quiet          → mode=quiet
-mech full           → mode=full
-mech stealth        → mode=stealth + "Modo Encubierto — la Noosfera observa en silencio"
-mech status         → tabla config + stats (herejías, ritos, uptime de sesión)
+mech <claude args>  → lanza tmux con claude + sidebar
+mech on|enable      → mode=full
+mech off|disable    → mode=off (passthrough directo)
+mech status         → tabla config + stats
 mech theme <name>   → switch paleta (rojo/verde/hueso/golden)
-mech lore           → litanía aleatoria del pool CONTEXT.md sección VIII
-mech --help         → ayuda completa en formato tecno-sacerdotal
+mech lore           → litanía aleatoria
+mech esp            → idioma español
+mech eng            → idioma inglés
+mech sidebar <N>    → ancho del panel derecho (20-60 cols)
+mech kill           → mata la sesión tmux
+mech --help         → ayuda completa
 
 Estructura ~/.mechcode_config.json:
 ```json
 {
   "mode": "full",
   "theme": "rojo",
-  "ascii_enabled": true,
-  "heresies_detected": 0,
-  "rites_completed": 0,
+  "language": "es",
+  "sidebar_width": 32,
   "session_start": "ISO timestamp"
+}
+```
+
+Estructura ~/.mechcode_state.json (compartido hook ↔ monitor):
+```json
+{
+  "main_state": "THINKING",
+  "tool": "Read",
+  "tool_detail": "main.py",
+  "message_es": "ESCANEANDO PERGAMINO DE DATOS",
+  "message_en": "SCANNING DATA-SCROLL",
+  "timestamp": 1234567890.0,
+  "agents": {
+    "agent-abc": {
+      "type": "Explore",
+      "name_en": "SCRYERSKULL — EXPLORER",
+      "state": "active",
+      "started": 1234567890.0
+    }
+  },
+  "stats": {
+    "heresies_detected": 0,
+    "rites_completed": 0,
+    "tools_invoked": 0,
+    "session_start": 1234567890.0
+  }
 }
 ```
 
@@ -166,34 +195,35 @@ Estructura ~/.mechcode_config.json:
 ## VI. RESTRICCIONES CRÍTICAS
 ═══════════════════════════════════════════════════════════════
 
-- NUNCA romper el pipe de Claude Code
-- NUNCA modificar el código real que Claude produce — solo mensajes de UI
-- NUNCA añadir latencia >50ms al pipeline de streaming
-- El modo `off` debe ser INDISTINGUIBLE del claude nativo
+- NUNCA interceptar ni modificar el TUI de Claude Code
+- Claude Code ejecuta en su propio panel tmux sin modificaciones
+- El servo-skull es un proceso independiente en panel separado
+- Hooks solo escriben estado a disco, exit 0 siempre (no bloquean)
+- El modo `off` = passthrough directo, sin tmux
 - Compatible: Linux, macOS. Windows: best-effort vía WSL
-- Python 3.8+ sin dependencias externas obligatorias (rich: opcional)
+- Python 3.8+ sin dependencias externas obligatorias
+- tmux requerido para sidebar (mechcode advierte si no está)
 - fish/zsh/bash: install.sh detecta el shell automáticamente
-- install.sh NO sobreescribe ~/.claude/CLAUDE.md sin backup y confirmación previa
+- install.sh NO sobreescribe ~/.claude/CLAUDE.md sin backup
 
 ═══════════════════════════════════════════════════════════════
 ## VII. ESTRUCTURA DEL REPOSITORIO
 ═══════════════════════════════════════════════════════════════
 ```
 mechanicus-terminal/
-├── SPEC.md
-├── CONTEXT.md
-├── mechcode.py              ← ejecutable principal
-├── servoskull.py            ← módulo ASCII art
+├── SPEC.md                  ← spec técnico
+├── CONTEXT.md               ← lore + diccionario canónico
+├── PROMPT.md                ← instrucciones de construcción
+├── mechcode.py              ← lanzador tmux (entry point)
+├── servoskull.py            ← pixel art (full + compact)
+├── servoskull_monitor.py    ← monitor ANSI para sidebar
+├── mechcode_hook.py         ← hook de Claude Code → estado
 ├── install.sh               ← rito de iniciación
+├── uninstall.sh             ← rito de desvinculación
 ├── LICENSE                  ← MIT
 ├── README.md                ← códex del wrapper
-├── config/
-│   └── CLAUDE.md            ← prompt global → ~/.claude/CLAUDE.md
-└── themes/
-    ├── theme_rojo.py        ← paleta Marte (default)
-    ├── theme_verde.py       ← paleta Biónica
-    ├── theme_hueso.py       ← paleta Pergamino
-    └── theme_golden.py      ← paleta Omnissiah
+└── config/
+    └── CLAUDE.md            ← prompt global → ~/.claude/CLAUDE.md
 ```
 
 ═══════════════════════════════════════════════════════════════

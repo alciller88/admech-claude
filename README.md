@@ -40,6 +40,7 @@ bash install.sh
 |-------------|---------|
 | **Claude Code** | `npm install -g @anthropic-ai/claude-code` |
 | **Python** | 3.8+ |
+| **tmux** | For servo-skull sidebar (`sudo apt install tmux` / `brew install tmux`) |
 | **Anthropic Account** | With Claude Code access |
 | **Shell** | bash / zsh / fish |
 
@@ -49,54 +50,47 @@ bash install.sh
 
 | Command | Action / Acción |
 |---------|----------------|
-| `mech on` / `mech enable` | Activate full Mechanicus mode / Activa modo completo |
-| `mech off` / `mech disable` | Deactivate — native Claude output / Output nativo |
-| `mech ascii` | Toggle servo-skull ASCII on/off |
-| `mech quiet` | Substitutions + color only / Solo sustituciones y color |
-| `mech full` | Full mode: ASCII + color + substitutions + litanies / Modo completo |
-| `mech stealth` | Stealth mode for hostile environments / Modo encubierto |
+| `mech <claude args>` | Launch tmux with claude + servo-skull sidebar |
+| `mech on` / `mech enable` | Activate Mechanicus mode / Activa modo |
+| `mech off` / `mech disable` | Deactivate — direct passthrough to claude |
 | `mech status` | Show config + stats / Config y estadísticas |
-| `mech theme <name>` | Switch palette / Cambiar paleta (`rojo` / `verde` / `hueso` / `golden`) |
+| `mech theme <name>` | Switch palette (`rojo` / `verde` / `hueso` / `golden`) |
 | `mech lore` | Random canonical litany / Litanía aleatoria |
 | `mech esp` | Switch language to Spanish / Cambiar a español |
 | `mech eng` | Switch language to English / Cambiar a inglés |
+| `mech sidebar <N>` | Set sidebar width (20-60 cols) |
+| `mech kill` | Kill tmux session |
 | `mech --help` | Full command codex / Códex de comandos |
 
-All other arguments are passed directly to `claude` — the proxy is transparent.
+All other arguments launch `claude` in a tmux session with an animated servo-skull sidebar.
 
-Todos los demás argumentos se pasan directamente a `claude` — el proxy es transparente.
-
----
-
-## † Operation Modes / Modos de Operación
-
-| Mode | ASCII | Colors | Substitutions | Litanies | Use / Uso |
-|------|:-----:|:------:|:-------------:|:--------:|-----------|
-| **full** | ✓ | ✓ | ✓ | ✓ | Default — full experience / Experiencia completa |
-| **quiet** | ✗ | ✓ | ✓ | ✗ | No art, with color + text / Sin arte, con color |
-| **ascii** | ✓ | ✓ | ✓ | ✗ | Art yes, litanies no / Arte sí, litanías no |
-| **stealth** | ✗ | ✗ | minimal | ✗ | Hostile environments / Entornos hostiles |
-| **off** | ✗ | ✗ | ✗ | ✗ | Indistinguishable from native `claude` |
+Todos los demás argumentos lanzan `claude` en una sesión tmux con un sidebar de servo-skull animado.
 
 ---
 
 ## ψ How It Works / Cómo Funciona
 
 ```
-[User] → [mechcode intercepts mech commands] → passes rest to [claude]
-                                                            ↓
-[Terminal] ← [ANSI colors] ← [substitutions] ← [raw stdout]
-                ↑
-         [servo-skull frame by state]
+┌──────────────────────────────────┬──────────────────────┐
+│  Claude Code (native TUI)        │  Servo-Skull Monitor  │
+│                                  │  [animated skull]     │
+│  hooks ──────────────────────────│──> state updates      │
+│  write to state file             │  [agent hierarchy]    │
+│                                  │  [live stats]         │
+└──────────────────────────────────┴──────────────────────┘
+         tmux left pane              right pane (32 cols)
 ```
 
-The substitution engine transforms system messages into Adeptus Mechanicus
-Cant — errors become heresies, successes become completed rites, and the
-Omnissiah guides all operations.
+Claude Code runs **unmodified** in its own tmux pane. Hooks fire on every
+tool call and write state to a shared JSON file. The servo-skull monitor
+reads that file and displays animated status — the skull changes based on
+what Claude is doing, and multiple agents appear as Servitors in a hierarchy.
 
-El motor de sustitución transforma mensajes del sistema en Cant Mechanicus
-— los errores se convierten en herejías, los éxitos en ritos completados,
-y el Omnissiah guía todas las operaciones.
+Claude Code ejecuta **sin modificar** en su propio panel tmux. Los hooks
+se disparan en cada tool call y escriben estado a un archivo JSON compartido.
+El monitor del servo-skull lee ese archivo y muestra estado animado — el
+cráneo cambia según lo que Claude hace, y múltiples agentes aparecen como
+Servitors en una jerarquía.
 
 ---
 

@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# ═══⚙═══ RITO DE INICIACIÓN — MECHANICUS TERMINAL ═══⚙═══
-# Designación: INSTALL-SCRIPT-Ω1
-# 01001001 01001110 01010011 01010100 01000001 01001100 01001100
+# === RITO DE INICIACION — MECHANICUS TERMINAL ===
+# Installs mechcode + servo-skull monitor + Claude Code hooks
 set -euo pipefail
 
-# ═══⚙═══ COLORS ═══⚙═══
+# === COLORS ===
 RED='\033[38;2;204;0;0m'
 ORANGE='\033[38;2;255;102;0m'
 GREEN='\033[38;2;0;255;65m'
@@ -13,58 +12,47 @@ GOLD='\033[38;2;255;215;0m'
 DIM='\033[38;2;74;74;74m'
 RESET='\033[0m'
 
-# ═══⚙═══ PATHS ═══⚙═══
+# === PATHS ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="${HOME}/.local/bin"
 CLAUDE_DIR="${HOME}/.claude"
+HOOKS_DIR="${CLAUDE_DIR}/hooks"
 MECHCODE_BIN="${INSTALL_DIR}/mechcode"
 CLAUDE_MD_SRC="${SCRIPT_DIR}/config/CLAUDE.md"
 CLAUDE_MD_DST="${CLAUDE_DIR}/CLAUDE.md"
+SETTINGS_FILE="${CLAUDE_DIR}/settings.json"
 
-# ═══⚙═══ FUNCTIONS ═══⚙═══
+# === FUNCTIONS ===
 
 print_banner() {
     echo -e "${GOLD}"
-    echo "═══════════════════════════════════════════════════════════════"
-    echo "  ⚙ MECHANICUS TERMINAL — RITO DE INICIACIÓN ⚙"
+    echo "================================================================="
+    echo "  MECHANICUS TERMINAL — RITO DE INICIACION"
     echo "  Rite of Initiation — Adeptus Mechanicus Wrapper for Claude Code"
-    echo "═══════════════════════════════════════════════════════════════"
-    echo -e "${DIM}  01001001 01001110 01001001 01010100 01001001 01000001 01010100 01000101${RESET}"
+    echo "================================================================="
+    echo -e "${DIM}  01001001 01001110 01001001 01010100${RESET}"
     echo ""
 }
 
 print_disclaimer() {
-    echo -e "${DIM}──†──†──†──†──†──†──†──†──†──†──†──†──†──†──†──†──†──†──${RESET}"
-    echo -e "${BONE}This is an unofficial fan project created for personal and educational use."
-    echo "Warhammer 40,000, Adeptus Mechanicus, and all related names, terms, characters,"
-    echo "and lore are trademarks and/or copyright of Games Workshop Limited and are used"
-    echo "here without permission. This project is not affiliated with, endorsed by, or"
-    echo "connected to Games Workshop in any way. No commercial use is intended or permitted."
+    echo -e "${DIM}--+--+--+--+--+--+--+--+--+--+--+--+--+--${RESET}"
+    echo -e "${BONE}This is an unofficial fan project for personal/educational use."
+    echo "Warhammer 40,000 and Adeptus Mechanicus are trademarks of"
+    echo "Games Workshop Limited. Not affiliated or endorsed by GW."
     echo -e "For the Omnissiah.${RESET}"
-    echo -e "${DIM}──†──†──†──†──†──†──†──†──†──†──†──†──†──†──†──†──†──†──${RESET}"
+    echo -e "${DIM}--+--+--+--+--+--+--+--+--+--+--+--+--+--${RESET}"
     echo ""
 }
 
-log_info() {
-    echo -e "${BONE}  [FORJA//] ⚙ $1${RESET}"
-}
-
-log_success() {
-    echo -e "${GREEN}  [RITO//] ‡ $1${RESET}"
-}
-
-log_warning() {
-    echo -e "${ORANGE}  [AUGUR//] † $1${RESET}"
-}
-
-log_error() {
-    echo -e "${RED}  [HEREJÍA//] ☠ $1${RESET}"
-}
+log_info()    { echo -e "${BONE}  [FORGE//] $1${RESET}"; }
+log_success() { echo -e "${GREEN}  [RITE//]  $1${RESET}"; }
+log_warning() { echo -e "${ORANGE}  [AUGUR//] $1${RESET}"; }
+log_error()   { echo -e "${RED}  [HERESY/] $1${RESET}"; }
 
 detect_shell() {
-    local current_shell
-    current_shell="$(basename "${SHELL:-bash}")"
-    case "$current_shell" in
+    local s
+    s="$(basename "${SHELL:-bash}")"
+    case "$s" in
         zsh)  echo "zsh" ;;
         fish) echo "fish" ;;
         *)    echo "bash" ;;
@@ -72,8 +60,7 @@ detect_shell() {
 }
 
 get_rc_file() {
-    local shell_type="$1"
-    case "$shell_type" in
+    case "$1" in
         zsh)  echo "${HOME}/.zshrc" ;;
         fish) echo "${HOME}/.config/fish/config.fish" ;;
         bash)
@@ -88,19 +75,13 @@ get_rc_file() {
 
 check_claude() {
     if command -v claude &>/dev/null; then
+        log_success "Claude Code found"
         return 0
     fi
-    log_error "HEREJÍA CRÍTICA — Claude Code no encontrado en PATH"
-    log_error "CRITICAL HERESY — Claude Code not found in PATH"
+    log_error "Claude Code not found in PATH"
     echo ""
-    echo -e "${BONE}  El Espíritu de Máquina no puede ser invocado sin el binario sagrado.${RESET}"
-    echo -e "${BONE}  The Machine Spirit cannot be awakened without the sacred binary.${RESET}"
+    echo -e "${BONE}  Install: npm install -g @anthropic-ai/claude-code${RESET}"
     echo ""
-    echo -e "${GOLD}  Instalar / Install:${RESET}"
-    echo -e "${BONE}    npm install -g @anthropic-ai/claude-code${RESET}"
-    echo ""
-    echo -e "${DIM}  Tras la instalación, ejecute este rito nuevamente.${RESET}"
-    echo -e "${DIM}  After installation, execute this rite again.${RESET}"
     exit 1
 }
 
@@ -113,12 +94,10 @@ check_python() {
     fi
 
     if [[ -z "$py_cmd" ]]; then
-        log_error "Python 3.8+ no encontrado — Python 3.8+ not found"
-        echo -e "${BONE}  El Omnissiah requiere Python 3.8+ para la Forja.${RESET}"
+        log_error "Python 3.8+ not found"
         exit 1
     fi
 
-    # Check version >= 3.8
     local version
     version=$($py_cmd -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
     local major minor
@@ -126,12 +105,29 @@ check_python() {
     minor=$(echo "$version" | cut -d. -f2)
 
     if [[ "$major" -lt 3 ]] || { [[ "$major" -eq 3 ]] && [[ "$minor" -lt 8 ]]; }; then
-        log_error "Python ${version} detectado — se requiere 3.8+"
         log_error "Python ${version} detected — 3.8+ required"
         exit 1
     fi
 
-    log_info "Python ${version} detectado — conforme al STC / STC-compliant"
+    log_success "Python ${version} — STC-compliant"
+}
+
+check_tmux() {
+    if command -v tmux &>/dev/null; then
+        local ver
+        ver=$(tmux -V 2>/dev/null || echo "unknown")
+        log_success "tmux found: ${ver}"
+        return 0
+    fi
+    log_warning "tmux not found — sidebar monitor requires tmux"
+    echo ""
+    echo -e "${BONE}  Install tmux:${RESET}"
+    echo -e "${BONE}    Ubuntu/Debian: sudo apt install tmux${RESET}"
+    echo -e "${BONE}    macOS:         brew install tmux${RESET}"
+    echo -e "${BONE}    Arch:          sudo pacman -S tmux${RESET}"
+    echo ""
+    echo -e "${ORANGE}  Continuing without tmux — mechcode will work in basic mode.${RESET}"
+    echo ""
 }
 
 backup_claude_md() {
@@ -140,53 +136,153 @@ backup_claude_md() {
         timestamp="$(date +%Y%m%d_%H%M%S)"
         local backup_path="${CLAUDE_MD_DST}.backup.${timestamp}"
 
-        log_warning "Fichero existente detectado — Existing file detected: ${CLAUDE_MD_DST}"
+        log_warning "Existing CLAUDE.md detected"
         echo ""
-        echo -e "${BONE}  Se creará un backup automático en / Automatic backup will be created at:${RESET}"
-        echo -e "${GOLD}    ${backup_path}${RESET}"
+        echo -e "${BONE}  Backup will be created at: ${backup_path}${RESET}"
         echo ""
-        echo -e -n "${ORANGE}  ¿Continuar? / Continue? [y/N]: ${RESET}"
+        echo -e -n "${ORANGE}  Continue? [y/N]: ${RESET}"
         read -r confirm
         confirm=$(echo "$confirm" | tr '[:upper:]' '[:lower:]')
-        if [[ "$confirm" != "y" && "$confirm" != "yes" && "$confirm" != "si" && "$confirm" != "sí" ]]; then
-            log_info "Rito abortado por el Magos — Rite aborted by Magos"
+        if [[ "$confirm" != "y" && "$confirm" != "yes" && "$confirm" != "si" ]]; then
+            log_info "Aborted by user"
             exit 0
         fi
 
         cp "$CLAUDE_MD_DST" "$backup_path"
-        log_success "Backup creado — Backup created: ${backup_path}"
+        log_success "Backup created: ${backup_path}"
     fi
 }
 
 install_mechcode() {
-    log_info "Creando directorio de instalación / Creating install directory: ${INSTALL_DIR}"
     mkdir -p "$INSTALL_DIR"
 
-    log_info "Instalando mechcode.py / Installing mechcode.py"
-    cp "${SCRIPT_DIR}/mechcode.py" "$MECHCODE_BIN"
+    # Copy all Python files
+    for pyfile in mechcode.py servoskull.py servoskull_monitor.py mechcode_hook.py; do
+        if [[ -f "${SCRIPT_DIR}/${pyfile}" ]]; then
+            cp "${SCRIPT_DIR}/${pyfile}" "${INSTALL_DIR}/${pyfile}"
+            log_info "Installed ${pyfile}"
+        fi
+    done
+
+    # Make mechcode executable
+    chmod +x "${INSTALL_DIR}/mechcode.py"
+
+    # Create wrapper script
+    local py_cmd="python3"
+    command -v python3 &>/dev/null || py_cmd="python"
+
+    cat > "$MECHCODE_BIN" << WRAPPER
+#!/usr/bin/env bash
+exec ${py_cmd} "${INSTALL_DIR}/mechcode.py" "\$@"
+WRAPPER
     chmod +x "$MECHCODE_BIN"
 
-    # Copy servoskull.py alongside mechcode
-    if [[ -f "${SCRIPT_DIR}/servoskull.py" ]]; then
-        cp "${SCRIPT_DIR}/servoskull.py" "${INSTALL_DIR}/servoskull.py"
-        log_info "Servo-cráneo instalado / Servo-skull installed"
-    fi
-
-    log_success "mechcode instalado en / installed at: ${MECHCODE_BIN}"
+    log_success "mechcode installed at: ${MECHCODE_BIN}"
 }
 
 install_claude_md() {
-    log_info "Creando directorio Claude / Creating Claude directory: ${CLAUDE_DIR}"
     mkdir -p "$CLAUDE_DIR"
 
     if [[ ! -f "$CLAUDE_MD_SRC" ]]; then
-        log_error "Grimorio no encontrado — Grimoire not found: ${CLAUDE_MD_SRC}"
-        log_error "Asegúrese de ejecutar desde el directorio del repositorio."
+        log_error "Grimoire not found: ${CLAUDE_MD_SRC}"
         exit 1
     fi
 
     cp "$CLAUDE_MD_SRC" "$CLAUDE_MD_DST"
-    log_success "Grimorio del Omnissiah instalado / Grimoire installed: ${CLAUDE_MD_DST}"
+    log_success "Grimoire installed: ${CLAUDE_MD_DST}"
+}
+
+install_hooks() {
+    mkdir -p "$HOOKS_DIR"
+
+    # Make hook script available
+    local hook_script="${INSTALL_DIR}/mechcode_hook.py"
+
+    if [[ ! -f "$hook_script" ]]; then
+        log_warning "Hook script not found, skipping hooks setup"
+        return
+    fi
+
+    chmod +x "$hook_script"
+
+    local py_cmd="python3"
+    command -v python3 &>/dev/null || py_cmd="python"
+
+    # Create the hook runner script
+    cat > "${HOOKS_DIR}/mechcode_hook.sh" << HOOKSCRIPT
+#!/usr/bin/env bash
+# Mechanicus Terminal hook — updates servo-skull monitor state
+cat | ${py_cmd} "${hook_script}"
+exit 0
+HOOKSCRIPT
+    chmod +x "${HOOKS_DIR}/mechcode_hook.sh"
+
+    # Update settings.json to register hooks
+    local hook_cmd="${HOOKS_DIR}/mechcode_hook.sh"
+
+    if [[ -f "$SETTINGS_FILE" ]]; then
+        # Backup existing settings
+        cp "$SETTINGS_FILE" "${SETTINGS_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+    fi
+
+    # Read existing settings or create new
+    local existing="{}"
+    if [[ -f "$SETTINGS_FILE" ]]; then
+        existing=$(cat "$SETTINGS_FILE" 2>/dev/null || echo "{}")
+    fi
+
+    # Use Python to merge hooks into settings
+    $py_cmd -c "
+import json, sys
+
+try:
+    settings = json.loads('''${existing}''')
+except:
+    settings = {}
+
+if 'hooks' not in settings:
+    settings['hooks'] = {}
+
+hook_cmd = '${hook_cmd}'
+
+# Define hook events we want to listen to
+events = [
+    'PreToolUse', 'PostToolUse', 'PostToolUseFailure',
+    'SubagentStart', 'SubagentStop', 'SessionStart', 'Stop'
+]
+
+for event in events:
+    if event not in settings['hooks']:
+        settings['hooks'][event] = []
+
+    # Check if our hook is already registered
+    existing_hooks = settings['hooks'][event]
+    already = any(
+        any(h.get('command', '') == hook_cmd for h in entry.get('hooks', []))
+        for entry in existing_hooks
+        if isinstance(entry, dict)
+    )
+    if not already:
+        settings['hooks'][event].append({
+            'matcher': '',
+            'hooks': [{
+                'type': 'command',
+                'command': hook_cmd
+            }]
+        })
+
+with open('${SETTINGS_FILE}', 'w') as f:
+    json.dump(settings, f, indent=2, ensure_ascii=False)
+
+print('OK')
+" 2>/dev/null
+
+    if [[ $? -eq 0 ]]; then
+        log_success "Claude Code hooks installed"
+    else
+        log_warning "Could not configure hooks automatically"
+        log_info "Run 'claude /hooks' to verify hook configuration"
+    fi
 }
 
 install_shell_config() {
@@ -195,12 +291,10 @@ install_shell_config() {
     local rc_file
     rc_file="$(get_rc_file "$shell_type")"
 
-    log_info "Shell detectado / Shell detected: ${shell_type} (${rc_file})"
+    log_info "Shell: ${shell_type} (${rc_file})"
 
-    # Check if alias already exists
     if grep -q "alias mech=" "$rc_file" 2>/dev/null; then
-        log_info "Alias 'mech' ya existe en ${rc_file} — ya configurado"
-        log_info "Alias 'mech' already exists in ${rc_file} — already configured"
+        log_info "Alias 'mech' already exists — skipping"
         return
     fi
 
@@ -208,19 +302,17 @@ install_shell_config() {
     case "$shell_type" in
         fish)
             alias_block='
-# ═══⚙═══ Mechanicus Terminal — Adeptus Mechanicus Wrapper ═══⚙═══
+# === Mechanicus Terminal ===
 alias mech="mechcode"
-# Completions
-complete -c mech -f -a "on enable off disable ascii quiet full stealth status theme lore esp eng help" -d "Mechanicus command"
+complete -c mech -f -a "on enable off disable status theme lore esp eng sidebar kill help" -d "Mechanicus command"
 '
             ;;
         zsh)
             alias_block='
-# ═══⚙═══ Mechanicus Terminal — Adeptus Mechanicus Wrapper ═══⚙═══
+# === Mechanicus Terminal ===
 alias mech="mechcode"
-# Zsh completions
 _mech_completions() {
-    local commands=(on enable off disable ascii quiet full stealth status theme lore esp eng --help)
+    local commands=(on enable off disable status theme lore esp eng sidebar kill --help)
     local themes=(rojo verde hueso golden)
     if (( CURRENT == 2 )); then
         _describe '\''command'\'' commands
@@ -233,11 +325,10 @@ compdef _mech_completions mech
             ;;
         *)
             alias_block='
-# ═══⚙═══ Mechanicus Terminal — Adeptus Mechanicus Wrapper ═══⚙═══
+# === Mechanicus Terminal ===
 alias mech="mechcode"
-# Bash completions
 _mech_completions() {
-    local commands="on enable off disable ascii quiet full stealth status theme lore esp eng --help"
+    local commands="on enable off disable status theme lore esp eng sidebar kill --help"
     local themes="rojo verde hueso golden"
     if [[ ${COMP_CWORD} -eq 1 ]]; then
         COMPREPLY=($(compgen -W "$commands" -- "${COMP_WORDS[1]}"))
@@ -251,92 +342,76 @@ complete -F _mech_completions mech
     esac
 
     echo "$alias_block" >> "$rc_file"
-    log_success "Alias y autocompletado añadidos a / Alias and completions added to: ${rc_file}"
+    log_success "Alias + completions added to: ${rc_file}"
 
     # Ensure ~/.local/bin is in PATH
     if ! echo "$PATH" | tr ':' '\n' | grep -q "${INSTALL_DIR}"; then
-        local path_line=""
         case "$shell_type" in
-            fish)
-                path_line="set -gx PATH ${INSTALL_DIR} \$PATH"
-                ;;
-            *)
-                path_line="export PATH=\"${INSTALL_DIR}:\$PATH\""
-                ;;
+            fish) echo "set -gx PATH ${INSTALL_DIR} \$PATH" >> "$rc_file" ;;
+            *)    echo "export PATH=\"${INSTALL_DIR}:\$PATH\"" >> "$rc_file" ;;
         esac
-        echo "$path_line" >> "$rc_file"
-        log_info "PATH actualizado en ${rc_file} / PATH updated"
+        log_info "PATH updated in ${rc_file}"
     fi
 }
 
 show_success() {
     echo ""
 
-    # Try to show servo-skull SUCCESS frame
+    # Try to show servo-skull
     local py_cmd=""
-    if command -v python3 &>/dev/null; then
-        py_cmd="python3"
-    elif command -v python &>/dev/null; then
-        py_cmd="python"
-    fi
+    command -v python3 &>/dev/null && py_cmd="python3"
+    [[ -z "$py_cmd" ]] && command -v python &>/dev/null && py_cmd="python"
 
     if [[ -n "$py_cmd" && -f "${SCRIPT_DIR}/servoskull.py" ]]; then
         $py_cmd -c "
-import sys
-sys.path.insert(0, '${SCRIPT_DIR}')
+import sys; sys.path.insert(0, '${SCRIPT_DIR}')
 from servoskull import get_frame
-print(get_frame('SUCCESS'))
+print(get_frame('SUCCESS', compact=True))
 " 2>/dev/null || true
     fi
 
     echo ""
-    echo -e "${GOLD}═══════════════════════════════════════════════════════════════${RESET}"
-    echo -e "${GOLD}  ⚙ El Rito de Iniciación ha concluido. La Forja está activa. ⚙${RESET}"
-    echo -e "${GOLD}  The Rite of Initiation is concluded. The Forge is active.${RESET}"
-    echo -e "${GREEN}  Que el Omnissiah guíe tus algoritmos, Magos. ‡${RESET}"
-    echo -e "${GREEN}  May the Omnissiah guide your algorithms, Magos. ‡${RESET}"
-    echo -e "${GOLD}═══════════════════════════════════════════════════════════════${RESET}"
+    echo -e "${GOLD}=================================================================${RESET}"
+    echo -e "${GOLD}  Rite of Initiation complete. The Forge is active.${RESET}"
+    echo -e "${GREEN}  May the Omnissiah guide your algorithms, Magos.${RESET}"
+    echo -e "${GOLD}=================================================================${RESET}"
     echo ""
-    echo -e "${BONE}  Uso / Usage:${RESET}"
-    echo -e "${BONE}    mech --help        ${DIM}→${BONE} Ver todos los comandos / See all commands${RESET}"
-    echo -e "${BONE}    mech on            ${DIM}→${BONE} Activar la Forja / Activate the Forge${RESET}"
-    echo -e "${BONE}    mech status        ${DIM}→${BONE} Estado actual / Current status${RESET}"
-    echo -e "${BONE}    mech lore          ${DIM}→${BONE} Litanía del Omnissiah / Litany${RESET}"
+    echo -e "${BONE}  Usage:${RESET}"
+    echo -e "${BONE}    mech --help        ${DIM}->${BONE} All commands${RESET}"
+    echo -e "${BONE}    mech <claude args> ${DIM}->${BONE} Launch with servo-skull sidebar${RESET}"
+    echo -e "${BONE}    mech status        ${DIM}->${BONE} Current config + stats${RESET}"
+    echo -e "${BONE}    mech kill          ${DIM}->${BONE} Kill tmux session${RESET}"
     echo ""
-    echo -e "${DIM}  Reinicie su terminal o ejecute / Restart your terminal or run:${RESET}"
-    echo -e "${BONE}    source $(get_rc_file "$(detect_shell)")${RESET}"
-    echo ""
-    echo -e "${DIM}  01001100 01000001 01010101 01010011 — LAUS OMNISSIAH — M41${RESET}"
+    echo -e "${DIM}  Restart terminal or run: source $(get_rc_file "$(detect_shell)")${RESET}"
+    echo -e "${DIM}  01001100 01000001 01010101 01010011 — LAUS OMNISSIAH${RESET}"
     echo ""
 }
 
-# ═══⚙═══ MAIN RITE ═══⚙═══
+# === MAIN ===
 
 main() {
     print_banner
     print_disclaimer
 
-    log_info "Iniciando verificaciones del sistema / Starting system checks..."
+    log_info "Running system checks..."
     echo ""
 
-    # Pre-flight checks
     check_claude
     check_python
+    check_tmux
     echo ""
 
-    # Backup existing CLAUDE.md if present
     backup_claude_md
     echo ""
 
-    # Install components
-    log_info "═══⚙═══ INSTALANDO COMPONENTES / INSTALLING COMPONENTS ═══⚙═══"
+    log_info "=== INSTALLING COMPONENTS ==="
     echo ""
     install_mechcode
     install_claude_md
+    install_hooks
     install_shell_config
     echo ""
 
-    # Victory
     show_success
 }
 

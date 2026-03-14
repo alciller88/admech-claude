@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# ═══⚙═══ RITO DE DESVINCULACIÓN — MECHANICUS TERMINAL ═══⚙═══
-# Designación: UNINSTALL-SCRIPT-Ω1
-# 01010101 01001110 01001001 01001110 01010011 01010100 01000001 01001100 01001100
+# === RITO DE DESVINCULACION — MECHANICUS TERMINAL ===
 set -euo pipefail
 
-# ═══⚙═══ COLORS ═══⚙═══
+# === COLORS ===
 RED='\033[38;2;204;0;0m'
 ORANGE='\033[38;2;255;102;0m'
 GREEN='\033[38;2;0;255;65m'
@@ -13,127 +11,131 @@ GOLD='\033[38;2;255;215;0m'
 DIM='\033[38;2;74;74;74m'
 RESET='\033[0m'
 
-# ═══⚙═══ PATHS ═══⚙═══
+# === PATHS ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="${HOME}/.local/bin"
 CLAUDE_DIR="${HOME}/.claude"
-MECHCODE_BIN="${INSTALL_DIR}/mechcode"
-SERVOSKULL_BIN="${INSTALL_DIR}/servoskull.py"
+HOOKS_DIR="${CLAUDE_DIR}/hooks"
 CLAUDE_MD="${CLAUDE_DIR}/CLAUDE.md"
 CONFIG_FILE="${HOME}/.mechcode_config.json"
+STATE_FILE="${HOME}/.mechcode_state.json"
+SETTINGS_FILE="${CLAUDE_DIR}/settings.json"
 
-# ═══⚙═══ FUNCTIONS ═══⚙═══
+# === FUNCTIONS ===
 
-log_info() {
-    echo -e "${BONE}  [FORJA//] ⚙ $1${RESET}"
-}
-
-log_success() {
-    echo -e "${GREEN}  [RITO//] ‡ $1${RESET}"
-}
-
-log_warning() {
-    echo -e "${ORANGE}  [AUGUR//] † $1${RESET}"
-}
+log_info()    { echo -e "${BONE}  [FORGE//] $1${RESET}"; }
+log_success() { echo -e "${GREEN}  [RITE//]  $1${RESET}"; }
 
 detect_shell() {
-    local current_shell
-    current_shell="$(basename "${SHELL:-bash}")"
-    case "$current_shell" in
-        zsh)  echo "zsh" ;;
-        fish) echo "fish" ;;
-        *)    echo "bash" ;;
-    esac
+    local s; s="$(basename "${SHELL:-bash}")"
+    case "$s" in zsh) echo "zsh" ;; fish) echo "fish" ;; *) echo "bash" ;; esac
 }
 
 get_rc_file() {
-    local shell_type="$1"
-    case "$shell_type" in
+    case "$1" in
         zsh)  echo "${HOME}/.zshrc" ;;
         fish) echo "${HOME}/.config/fish/config.fish" ;;
-        bash)
-            if [[ -f "${HOME}/.bashrc" ]]; then
-                echo "${HOME}/.bashrc"
-            else
-                echo "${HOME}/.bash_profile"
-            fi
-            ;;
+        bash) [[ -f "${HOME}/.bashrc" ]] && echo "${HOME}/.bashrc" || echo "${HOME}/.bash_profile" ;;
     esac
 }
 
+kill_tmux_session() {
+    if command -v tmux &>/dev/null; then
+        tmux kill-session -t mechanicus 2>/dev/null && log_info "tmux session killed" || true
+    fi
+}
+
 remove_mechcode() {
-    if [[ -f "$MECHCODE_BIN" ]]; then
-        rm -f "$MECHCODE_BIN"
-        log_info "mechcode eliminado / removed: ${MECHCODE_BIN}"
-    else
-        log_info "mechcode no encontrado — ya eliminado / already removed"
+    for f in mechcode mechcode.py servoskull.py servoskull_monitor.py mechcode_hook.py; do
+        local fp="${INSTALL_DIR}/${f}"
+        if [[ -f "$fp" ]]; then
+            rm -f "$fp"
+            log_info "Removed: ${fp}"
+        fi
+    done
+}
+
+remove_hooks() {
+    # Remove hook runner script
+    if [[ -f "${HOOKS_DIR}/mechcode_hook.sh" ]]; then
+        rm -f "${HOOKS_DIR}/mechcode_hook.sh"
+        log_info "Removed hook script"
     fi
 
-    if [[ -f "$SERVOSKULL_BIN" ]]; then
-        rm -f "$SERVOSKULL_BIN"
-        log_info "servoskull.py eliminado / removed: ${SERVOSKULL_BIN}"
+    # Remove hook entries from settings.json
+    if [[ -f "$SETTINGS_FILE" ]]; then
+        local py_cmd="python3"
+        command -v python3 &>/dev/null || py_cmd="python"
+
+        $py_cmd -c "
+import json
+with open('${SETTINGS_FILE}', 'r') as f:
+    s = json.load(f)
+hooks = s.get('hooks', {})
+for event in list(hooks.keys()):
+    hooks[event] = [
+        entry for entry in hooks[event]
+        if not any('mechcode_hook' in h.get('command','') for h in entry.get('hooks',[]))
+    ]
+    if not hooks[event]:
+        del hooks[event]
+if not hooks:
+    s.pop('hooks', None)
+with open('${SETTINGS_FILE}', 'w') as f:
+    json.dump(s, f, indent=2, ensure_ascii=False)
+" 2>/dev/null && log_info "Removed hooks from settings.json" || true
+    fi
+
+    # Clean up empty hooks dir
+    if [[ -d "$HOOKS_DIR" ]] && [[ -z "$(ls -A "$HOOKS_DIR" 2>/dev/null)" ]]; then
+        rmdir "$HOOKS_DIR" 2>/dev/null || true
     fi
 }
 
 restore_claude_md() {
-    # Find the most recent backup
     local latest_backup=""
     latest_backup="$(ls -t "${CLAUDE_MD}".backup.* 2>/dev/null | head -1 || true)"
 
     if [[ -n "$latest_backup" && -f "$latest_backup" ]]; then
         cp "$latest_backup" "$CLAUDE_MD"
-        log_info "CLAUDE.md restaurado desde backup / restored from backup: ${latest_backup}"
-        # Clean up all backups
+        log_info "CLAUDE.md restored from: ${latest_backup}"
         rm -f "${CLAUDE_MD}".backup.*
-        log_info "Backups eliminados / Backups cleaned up"
     elif [[ -f "$CLAUDE_MD" ]]; then
         rm -f "$CLAUDE_MD"
-        log_info "CLAUDE.md eliminado (sin backup previo) / removed (no prior backup)"
-    else
-        log_info "CLAUDE.md no encontrado — nada que restaurar / nothing to restore"
+        log_info "CLAUDE.md removed (no backup)"
     fi
 }
 
 remove_config() {
-    if [[ -f "$CONFIG_FILE" ]]; then
-        rm -f "$CONFIG_FILE"
-        log_info "Config eliminado / removed: ${CONFIG_FILE}"
-    else
-        log_info "Config no encontrado — ya eliminado / already removed"
-    fi
+    for f in "$CONFIG_FILE" "$STATE_FILE"; do
+        if [[ -f "$f" ]]; then
+            rm -f "$f"
+            log_info "Removed: ${f}"
+        fi
+    done
 }
 
 remove_shell_config() {
-    local shell_type
-    shell_type="$(detect_shell)"
     local rc_file
-    rc_file="$(get_rc_file "$shell_type")"
+    rc_file="$(get_rc_file "$(detect_shell)")"
+    [[ ! -f "$rc_file" ]] && return
 
-    if [[ ! -f "$rc_file" ]]; then
-        log_info "RC file no encontrado / not found: ${rc_file}"
-        return
-    fi
-
-    # Remove the Mechanicus block (comment + alias + completions)
     local tmp_file
     tmp_file="$(mktemp)"
 
     local in_block=false
     while IFS= read -r line; do
-        if [[ "$line" == *"═══⚙═══ Mechanicus Terminal"* ]]; then
+        if [[ "$line" == *"Mechanicus Terminal"* ]]; then
             in_block=true
             continue
         fi
         if $in_block; then
-            # End of block: next non-empty line that doesn't look like our config
             case "$line" in
                 "alias mech="*|"# "*|"complete "*mech*|"compdef "*mech*|"_mech_completions"*|*"COMP"*|*"commands"*|*"themes"*|*"CURRENT"*|*"_describe"*|*"words["*|"}"*|"set -gx PATH"*"/.local/bin"*|"export PATH="*"/.local/bin"*|"")
-                    continue
-                    ;;
+                    continue ;;
                 *)
                     in_block=false
-                    echo "$line"
-                    ;;
+                    echo "$line" ;;
             esac
         else
             echo "$line"
@@ -141,67 +143,40 @@ remove_shell_config() {
     done < "$rc_file" > "$tmp_file"
 
     mv "$tmp_file" "$rc_file"
-    log_info "Alias y completions eliminados de / removed from: ${rc_file}"
+    log_info "Shell config cleaned: ${rc_file}"
 }
 
-show_farewell() {
-    echo ""
-
-    # Try to show servo-skull ERROR frame
-    local py_cmd=""
-    if command -v python3 &>/dev/null; then
-        py_cmd="python3"
-    elif command -v python &>/dev/null; then
-        py_cmd="python"
-    fi
-
-    if [[ -n "$py_cmd" && -f "${SCRIPT_DIR}/servoskull.py" ]]; then
-        $py_cmd -c "
-import sys
-sys.path.insert(0, '${SCRIPT_DIR}')
-from servoskull import get_frame
-print(get_frame('ERROR'))
-" 2>/dev/null || true
-    fi
-
-    echo ""
-    echo -e "${RED}═══════════════════════════════════════════════════════════════${RESET}"
-    echo -e "${RED}  ☠ El Rito de Desvinculación ha concluido. La Forja se apaga. ☠${RESET}"
-    echo -e "${RED}  The Rite of Unbinding is concluded. The Forge goes dark.${RESET}"
-    echo -e "${DIM}  The machine spirit returns to the Omnissiah. ☠${RESET}"
-    echo -e "${RED}═══════════════════════════════════════════════════════════════${RESET}"
-    echo ""
-    echo -e "${DIM}  Reinicie su terminal / Restart your terminal.${RESET}"
-    echo -e "${DIM}  01000101 01001110 01000100 — SIGNAL LOST — M41${RESET}"
-    echo ""
-}
-
-# ═══⚙═══ MAIN RITE ═══⚙═══
+# === MAIN ===
 
 main() {
     echo ""
-    echo -e "${RED}═══════════════════════════════════════════════════════════════${RESET}"
-    echo -e "${RED}  ☠ MECHANICUS TERMINAL — RITO DE DESVINCULACIÓN ☠${RESET}"
-    echo -e "${RED}  Rite of Unbinding — Removing Adeptus Mechanicus Wrapper${RESET}"
-    echo -e "${RED}═══════════════════════════════════════════════════════════════${RESET}"
-    echo -e "${DIM}  01010101 01001110 01001001 01001110 01010011 01010100${RESET}"
+    echo -e "${RED}=================================================================${RESET}"
+    echo -e "${RED}  MECHANICUS TERMINAL — RITE OF UNBINDING${RESET}"
+    echo -e "${RED}=================================================================${RESET}"
     echo ""
 
-    echo -e -n "${ORANGE}  ¿Proceder con la desvinculación? / Proceed with unbinding? [y/N]: ${RESET}"
+    echo -e -n "${ORANGE}  Proceed? [y/N]: ${RESET}"
     read -r confirm
     confirm=$(echo "$confirm" | tr '[:upper:]' '[:lower:]')
-    if [[ "$confirm" != "y" && "$confirm" != "yes" && "$confirm" != "si" && "$confirm" != "sí" ]]; then
-        log_info "Rito cancelado. La Forja permanece activa. / Rite cancelled. Forge remains active."
+    if [[ "$confirm" != "y" && "$confirm" != "yes" && "$confirm" != "si" ]]; then
+        log_info "Cancelled."
         exit 0
     fi
     echo ""
 
+    kill_tmux_session
     remove_mechcode
+    remove_hooks
     restore_claude_md
     remove_config
     remove_shell_config
 
-    show_farewell
+    echo ""
+    echo -e "${RED}=================================================================${RESET}"
+    echo -e "${RED}  Rite of Unbinding complete. The Forge goes dark.${RESET}"
+    echo -e "${DIM}  Restart your terminal.${RESET}"
+    echo -e "${RED}=================================================================${RESET}"
+    echo ""
 }
 
 main "$@"
