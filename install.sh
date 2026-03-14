@@ -16,7 +16,7 @@ RESET='\033[0m'
 detect_lang() {
     local val=""
     for var in LANG LC_ALL LANGUAGE LC_MESSAGES; do
-        val="${!var}"
+        val="${!var:-}"
         if [[ "${val,,}" == es* ]]; then
             echo "es"
             return
