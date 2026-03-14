@@ -30,12 +30,101 @@ MONITOR_SCRIPT = SCRIPT_DIR / "servoskull_monitor.py"
 TMUX_SESSION = "mechanicus"
 SIDEBAR_WIDTH = 32  # columns for the right pane
 
+# === LANGUAGE DETECTION ===
+
+def detect_system_language():
+    """Detect language from system locale. Returns 'es' or 'en'."""
+    for var in ("LANG", "LC_ALL", "LANGUAGE", "LC_MESSAGES"):
+        val = os.environ.get(var, "")
+        if val.lower().startswith("es"):
+            return "es"
+    return "en"
+
+
+def get_lang(cfg):
+    """Get active language. Config overrides system detection."""
+    lang = cfg.get("language")
+    if lang and lang != "auto":
+        return lang
+    return detect_system_language()
+
+
+# === I18N STRINGS ===
+
+I18N = {
+    "en": {
+        "forge_activated": "\u2699 FORGE ACTIVATED \u2699",
+        "protocol_suspended": "PROTOCOL SUSPENDED \u2014 SILENCE MODE",
+        "lang_set": "\u2699 Language: English \u2699",
+        "unknown_theme": "Unknown theme: '{}'. Available: {}",
+        "theme_set": "\u2699 Theme: {} \u2699",
+        "sidebar_range": "Sidebar width must be between 20 and 60",
+        "sidebar_invalid": "Invalid width: '{}'",
+        "sidebar_set": "\u2699 Sidebar width: {} cols (restart session to apply) \u2699",
+        "session_killed": "Session terminated.",
+        "no_session": "No active Mechanicus session.",
+        "help_header": "\u2550\u2550\u2550\u2699 MECHANICUS TERMINAL \u2014 COMMANDS \u2699\u2550\u2550\u2550",
+        "help_footer_1": "All other args are passed to claude in a tmux session",
+        "help_footer_2": "with an animated servo-skull sidebar monitor.",
+        "help_cmds": [
+            ("mech on|enable",    "Activate Mechanicus mode"),
+            ("mech off|disable",  "Deactivate \u2014 native claude output"),
+            ("mech status",       "Show config + stats"),
+            ("mech theme <name>", "Switch palette (rojo/verde/hueso/golden)"),
+            ("mech lore",         "Random canonical litany"),
+            ("mech esp",          "Language: Spanish"),
+            ("mech eng",          "Language: English"),
+            ("mech sidebar <N>",  "Set sidebar width (20-60 cols)"),
+            ("mech kill",         "Kill tmux session"),
+            ("mech --help",       "This codex"),
+        ],
+        "claude_not_found": "HERESY \u2014 Claude Code not found in PATH",
+        "claude_install": "Install: npm install -g @anthropic-ai/claude-code",
+        "tmux_required": "tmux is required for Mechanicus Terminal",
+        "tmux_install": "Install: sudo apt install tmux  /  brew install tmux",
+        "status_header": "\u2550\u2550\u2550\u2699\u2550\u2550\u2550 MECHANICUS STATUS \u2550\u2550\u2550\u2699\u2550\u2550\u2550",
+    },
+    "es": {
+        "forge_activated": "\u2699 FORJA ACTIVADA \u2699",
+        "protocol_suspended": "PROTOCOLO SUSPENDIDO \u2014 MODO SILENCIO",
+        "lang_set": "\u2699 Idioma: Espa\u00f1ol \u2699",
+        "unknown_theme": "Tema desconocido: '{}'. Disponibles: {}",
+        "theme_set": "\u2699 Tema: {} \u2699",
+        "sidebar_range": "El ancho del sidebar debe estar entre 20 y 60",
+        "sidebar_invalid": "Ancho no v\u00e1lido: '{}'",
+        "sidebar_set": "\u2699 Ancho sidebar: {} cols (reiniciar sesi\u00f3n para aplicar) \u2699",
+        "session_killed": "Sesi\u00f3n terminada.",
+        "no_session": "No hay sesi\u00f3n Mechanicus activa.",
+        "help_header": "\u2550\u2550\u2550\u2699 MECHANICUS TERMINAL \u2014 COMANDOS \u2699\u2550\u2550\u2550",
+        "help_footer_1": "El resto de args se pasan a claude en una sesi\u00f3n tmux",
+        "help_footer_2": "con un monitor de servo-cr\u00e1neo animado.",
+        "help_cmds": [
+            ("mech on|enable",    "Activar modo Mechanicus"),
+            ("mech off|disable",  "Desactivar \u2014 output nativo de claude"),
+            ("mech status",       "Config y estad\u00edsticas"),
+            ("mech theme <name>", "Cambiar paleta (rojo/verde/hueso/golden)"),
+            ("mech lore",         "Letan\u00eda can\u00f3nica aleatoria"),
+            ("mech esp",          "Idioma: Espa\u00f1ol"),
+            ("mech eng",          "Idioma: Ingl\u00e9s"),
+            ("mech sidebar <N>",  "Ancho del sidebar (20-60 cols)"),
+            ("mech kill",         "Terminar sesi\u00f3n tmux"),
+            ("mech --help",       "Este c\u00f3dex"),
+        ],
+        "claude_not_found": "HEREJ\u00cdA \u2014 Claude Code no encontrado en PATH",
+        "claude_install": "Instalar: npm install -g @anthropic-ai/claude-code",
+        "tmux_required": "tmux es necesario para Mechanicus Terminal",
+        "tmux_install": "Instalar: sudo apt install tmux  /  brew install tmux",
+        "status_header": "\u2550\u2550\u2550\u2699\u2550\u2550\u2550 ESTADO MECHANICUS \u2550\u2550\u2550\u2699\u2550\u2550\u2550",
+    },
+}
+
+
 # === DEFAULT CONFIG ===
 DEFAULT_CONFIG = {
     "mode": "full",
     "theme": "rojo",
     "ascii_enabled": True,
-    "language": "es",
+    "language": "auto",
     "sidebar_width": SIDEBAR_WIDTH,
     "heresies_detected": 0,
     "rites_completed": 0,
@@ -190,8 +279,9 @@ def launch_tmux_session(claude_args, cfg):
     claude_path = find_claude()
     if not claude_path:
         theme = get_theme(cfg)
-        print(f"{theme['error']}HERESY \u2014 Claude Code not found in PATH\033[0m")
-        print(f"{theme['warning']}Install: npm install -g @anthropic-ai/claude-code\033[0m")
+        t = I18N[get_lang(cfg)]
+        print(f"{theme['error']}{t['claude_not_found']}\033[0m")
+        print(f"{theme['warning']}{t['claude_install']}\033[0m")
         sys.exit(1)
 
     python_path = find_python()
@@ -268,22 +358,24 @@ def cmd_on(cfg):
     cfg["ascii_enabled"] = True
     save_config(cfg)
     theme = get_theme(cfg)
-    print(f"{theme['gold']}\u2699 FORJA ACTIVADA \u2014 FORGE ACTIVATED \u2699{theme['reset']}")
+    t = I18N[get_lang(cfg)]
+    print(f"{theme['gold']}{t['forge_activated']}{theme['reset']}")
 
 def cmd_off(cfg):
     cfg["mode"] = "off"
     save_config(cfg)
-    print("PROTOCOLO SUSPENDIDO \u2014 MODO SILENCIO")
+    t = I18N[get_lang(cfg)]
+    print(t["protocol_suspended"])
 
 def cmd_status(cfg):
     theme = get_theme(cfg)
+    t = I18N[get_lang(cfg)]
     g, i, d, r = theme["gold"], theme["info"], theme["dim"], theme["reset"]
-    print(f"{g}\u2550\u2550\u2550\u2699\u2550\u2550\u2550 MECHANICUS STATUS \u2550\u2550\u2550\u2699\u2550\u2550\u2550{r}")
+    print(f"{g}{t['status_header']}{r}")
     print(f"{i}  Mode:     {g}{cfg.get('mode', 'full')}{r}")
     print(f"{i}  Theme:    {g}{cfg.get('theme', 'rojo')}{r}")
-    print(f"{i}  Language: {g}{cfg.get('language', 'es')}{r}")
+    print(f"{i}  Language: {g}{cfg.get('language', 'auto')}{r}")
     print(f"{i}  Sidebar:  {g}{cfg.get('sidebar_width', SIDEBAR_WIDTH)} cols{r}")
-    # Try to read stats from state file
     try:
         if STATE_FILE.exists():
             state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
@@ -297,13 +389,14 @@ def cmd_status(cfg):
 
 def cmd_theme(cfg, theme_name):
     theme_name = theme_name.lower().strip()
+    t = I18N[get_lang(cfg)]
     if theme_name not in THEMES:
-        print(f"\033[31mUnknown theme: '{theme_name}'. Available: {', '.join(THEMES.keys())}\033[0m")
+        print(f"\033[31m{t['unknown_theme'].format(theme_name, ', '.join(THEMES.keys()))}\033[0m")
         return
     cfg["theme"] = theme_name
     save_config(cfg)
     theme = get_theme(cfg)
-    print(f"{theme['gold']}\u2699 Theme: {theme_name} \u2699{theme['reset']}")
+    print(f"{theme['gold']}{t['theme_set'].format(theme_name)}{theme['reset']}")
 
 def cmd_lore(_cfg):
     theme = get_theme(_cfg)
@@ -319,54 +412,42 @@ def cmd_lang(cfg, lang):
         return
     cfg["language"] = lang
     save_config(cfg)
-    if lang == "es":
-        print("\u2699 Idioma: Espa\u00f1ol \u2699")
-    else:
-        print("\u2699 Language: English \u2699")
+    t = I18N[lang]
+    print(t["lang_set"])
 
 def cmd_sidebar(cfg, width_str):
+    t = I18N[get_lang(cfg)]
     try:
         width = int(width_str)
         if width < 20 or width > 60:
-            print("Sidebar width must be between 20 and 60")
+            print(t["sidebar_range"])
             return
     except ValueError:
-        print(f"Invalid width: '{width_str}'")
+        print(t["sidebar_invalid"].format(width_str))
         return
     cfg["sidebar_width"] = width
     save_config(cfg)
-    print(f"\u2699 Sidebar width: {width} cols (restart session to apply) \u2699")
+    print(t["sidebar_set"].format(width))
 
 def cmd_kill(_cfg):
-    """Kill the tmux session."""
+    t = I18N[get_lang(_cfg)]
     if tmux_session_exists():
         subprocess.run(["tmux", "kill-session", "-t", TMUX_SESSION])
-        print("Session terminated.")
+        print(t["session_killed"])
     else:
-        print("No active Mechanicus session.")
+        print(t["no_session"])
 
 def cmd_help(cfg):
     theme = get_theme(cfg)
+    t = I18N[get_lang(cfg)]
     g, i, d, w, r = theme["gold"], theme["info"], theme["dim"], theme["warning"], theme["reset"]
-    print(f"{g}\u2550\u2550\u2550\u2699 MECHANICUS TERMINAL \u2014 COMMANDS \u2699\u2550\u2550\u2550{r}")
+    print(f"{g}{t['help_header']}{r}")
     print()
-    cmds = [
-        ("mech on|enable",    "Activate Mechanicus mode"),
-        ("mech off|disable",  "Deactivate \u2014 native claude output"),
-        ("mech status",       "Show config + stats"),
-        ("mech theme <name>", "Switch palette (rojo/verde/hueso/golden)"),
-        ("mech lore",         "Random canonical litany"),
-        ("mech esp",          "Language: Spanish"),
-        ("mech eng",          "Language: English"),
-        ("mech sidebar <N>",  "Set sidebar width (20-60 cols)"),
-        ("mech kill",         "Kill tmux session"),
-        ("mech --help",       "This codex"),
-    ]
-    for cmd, desc in cmds:
+    for cmd, desc in t["help_cmds"]:
         print(f"{i}  {cmd:<22}{d}\u2192{i} {desc}{r}")
     print()
-    print(f"{w}  All other args are passed to claude in a tmux session{r}")
-    print(f"{w}  with an animated servo-skull sidebar monitor.{r}")
+    print(f"{w}  {t['help_footer_1']}{r}")
+    print(f"{w}  {t['help_footer_2']}{r}")
     print()
     print(f"{d}  \"From the weakness of the mind, Omnissiah save us.\"{r}")
     print(f"{g}\u2550\u2550\u2550\u2699 LAUS OMNISSIAH \u2699\u2550\u2550\u2550{r}")
@@ -426,8 +507,9 @@ def main():
     # Check prerequisites
     if not has_tmux():
         theme = get_theme(cfg)
-        print(f"{theme['error']}tmux is required for Mechanicus Terminal{theme['reset']}")
-        print(f"{theme['info']}Install: sudo apt install tmux  /  brew install tmux{theme['reset']}")
+        t = I18N[get_lang(cfg)]
+        print(f"{theme['error']}{t['tmux_required']}{theme['reset']}")
+        print(f"{theme['info']}{t['tmux_install']}{theme['reset']}")
         sys.exit(1)
 
     # Launch tmux session with claude + monitor

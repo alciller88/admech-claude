@@ -2,6 +2,20 @@
 # === RITO DE DESVINCULACION — MECHANICUS TERMINAL ===
 set -euo pipefail
 
+# === LANGUAGE DETECTION ===
+detect_lang() {
+    local val=""
+    for var in LANG LC_ALL LANGUAGE LC_MESSAGES; do
+        val="${!var}"
+        if [[ "${val,,}" == es* ]]; then
+            echo "es"
+            return
+        fi
+    done
+    echo "en"
+}
+INST_LANG="$(detect_lang)"
+
 # === COLORS ===
 RED='\033[38;2;204;0;0m'
 ORANGE='\033[38;2;255;102;0m'
@@ -151,15 +165,27 @@ remove_shell_config() {
 main() {
     echo ""
     echo -e "${RED}=================================================================${RESET}"
-    echo -e "${RED}  MECHANICUS TERMINAL — RITE OF UNBINDING${RESET}"
+    if [[ "$INST_LANG" == "es" ]]; then
+        echo -e "${RED}  MECHANICUS TERMINAL — RITO DE DESVINCULACION${RESET}"
+    else
+        echo -e "${RED}  MECHANICUS TERMINAL — RITE OF UNBINDING${RESET}"
+    fi
     echo -e "${RED}=================================================================${RESET}"
     echo ""
 
-    echo -e -n "${ORANGE}  Proceed? [y/N]: ${RESET}"
+    if [[ "$INST_LANG" == "es" ]]; then
+        echo -e -n "${ORANGE}  Continuar? [y/N]: ${RESET}"
+    else
+        echo -e -n "${ORANGE}  Proceed? [y/N]: ${RESET}"
+    fi
     read -r confirm
     confirm=$(echo "$confirm" | tr '[:upper:]' '[:lower:]')
     if [[ "$confirm" != "y" && "$confirm" != "yes" && "$confirm" != "si" ]]; then
-        log_info "Cancelled."
+        if [[ "$INST_LANG" == "es" ]]; then
+            log_info "Cancelado."
+        else
+            log_info "Cancelled."
+        fi
         exit 0
     fi
     echo ""
@@ -173,8 +199,13 @@ main() {
 
     echo ""
     echo -e "${RED}=================================================================${RESET}"
-    echo -e "${RED}  Rite of Unbinding complete. The Forge goes dark.${RESET}"
-    echo -e "${DIM}  Restart your terminal.${RESET}"
+    if [[ "$INST_LANG" == "es" ]]; then
+        echo -e "${RED}  Rito de Desvinculacion completado. La Forja se apaga.${RESET}"
+        echo -e "${DIM}  Reinicia tu terminal.${RESET}"
+    else
+        echo -e "${RED}  Rite of Unbinding complete. The Forge goes dark.${RESET}"
+        echo -e "${DIM}  Restart your terminal.${RESET}"
+    fi
     echo -e "${RED}=================================================================${RESET}"
     echo ""
 }

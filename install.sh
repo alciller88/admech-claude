@@ -12,6 +12,20 @@ GOLD='\033[38;2;255;215;0m'
 DIM='\033[38;2;74;74;74m'
 RESET='\033[0m'
 
+# === LANGUAGE DETECTION ===
+detect_lang() {
+    local val=""
+    for var in LANG LC_ALL LANGUAGE LC_MESSAGES; do
+        val="${!var}"
+        if [[ "${val,,}" == es* ]]; then
+            echo "es"
+            return
+        fi
+    done
+    echo "en"
+}
+INST_LANG="$(detect_lang)"
+
 # === PATHS ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="${HOME}/.local/bin"
@@ -27,8 +41,13 @@ SETTINGS_FILE="${CLAUDE_DIR}/settings.json"
 print_banner() {
     echo -e "${GOLD}"
     echo "================================================================="
-    echo "  MECHANICUS TERMINAL — RITO DE INICIACION"
-    echo "  Rite of Initiation — Adeptus Mechanicus Wrapper for Claude Code"
+    if [[ "$INST_LANG" == "es" ]]; then
+        echo "  MECHANICUS TERMINAL — RITO DE INICIACION"
+        echo "  Wrapper Adeptus Mechanicus para Claude Code"
+    else
+        echo "  MECHANICUS TERMINAL — RITE OF INITIATION"
+        echo "  Adeptus Mechanicus Wrapper for Claude Code"
+    fi
     echo "================================================================="
     echo -e "${DIM}  01001001 01001110 01001001 01010100${RESET}"
     echo ""
@@ -36,10 +55,17 @@ print_banner() {
 
 print_disclaimer() {
     echo -e "${DIM}--+--+--+--+--+--+--+--+--+--+--+--+--+--${RESET}"
-    echo -e "${BONE}This is an unofficial fan project for personal/educational use."
-    echo "Warhammer 40,000 and Adeptus Mechanicus are trademarks of"
-    echo "Games Workshop Limited. Not affiliated or endorsed by GW."
-    echo -e "For the Omnissiah.${RESET}"
+    if [[ "$INST_LANG" == "es" ]]; then
+        echo -e "${BONE}Proyecto fan no oficial para uso personal/educativo."
+        echo "Warhammer 40,000 y Adeptus Mechanicus son marcas de"
+        echo "Games Workshop Limited. No afiliado ni respaldado por GW."
+        echo -e "Por el Omnissiah.${RESET}"
+    else
+        echo -e "${BONE}This is an unofficial fan project for personal/educational use."
+        echo "Warhammer 40,000 and Adeptus Mechanicus are trademarks of"
+        echo "Games Workshop Limited. Not affiliated or endorsed by GW."
+        echo -e "For the Omnissiah.${RESET}"
+    fi
     echo -e "${DIM}--+--+--+--+--+--+--+--+--+--+--+--+--+--${RESET}"
     echo ""
 }
@@ -75,10 +101,18 @@ get_rc_file() {
 
 check_claude() {
     if command -v claude &>/dev/null; then
-        log_success "Claude Code found"
+        if [[ "$INST_LANG" == "es" ]]; then
+            log_success "Claude Code encontrado"
+        else
+            log_success "Claude Code found"
+        fi
         return 0
     fi
-    log_error "Claude Code not found in PATH"
+    if [[ "$INST_LANG" == "es" ]]; then
+        log_error "Claude Code no encontrado en PATH"
+    else
+        log_error "Claude Code not found in PATH"
+    fi
     echo ""
     echo -e "${BONE}  Install: npm install -g @anthropic-ai/claude-code${RESET}"
     echo ""
@@ -94,7 +128,11 @@ check_python() {
     fi
 
     if [[ -z "$py_cmd" ]]; then
-        log_error "Python 3.8+ not found"
+        if [[ "$INST_LANG" == "es" ]]; then
+            log_error "Python 3.8+ no encontrado"
+        else
+            log_error "Python 3.8+ not found"
+        fi
         exit 1
     fi
 
@@ -105,7 +143,11 @@ check_python() {
     minor=$(echo "$version" | cut -d. -f2)
 
     if [[ "$major" -lt 3 ]] || { [[ "$major" -eq 3 ]] && [[ "$minor" -lt 8 ]]; }; then
-        log_error "Python ${version} detected — 3.8+ required"
+        if [[ "$INST_LANG" == "es" ]]; then
+            log_error "Python ${version} detectado — se requiere 3.8+"
+        else
+            log_error "Python ${version} detected — 3.8+ required"
+        fi
         exit 1
     fi
 
@@ -116,17 +158,31 @@ check_tmux() {
     if command -v tmux &>/dev/null; then
         local ver
         ver=$(tmux -V 2>/dev/null || echo "unknown")
-        log_success "tmux found: ${ver}"
+        if [[ "$INST_LANG" == "es" ]]; then
+            log_success "tmux encontrado: ${ver}"
+        else
+            log_success "tmux found: ${ver}"
+        fi
         return 0
     fi
-    log_warning "tmux not found — sidebar monitor requires tmux"
-    echo ""
-    echo -e "${BONE}  Install tmux:${RESET}"
+    if [[ "$INST_LANG" == "es" ]]; then
+        log_warning "tmux no encontrado — el monitor sidebar requiere tmux"
+        echo ""
+        echo -e "${BONE}  Instalar tmux:${RESET}"
+    else
+        log_warning "tmux not found — sidebar monitor requires tmux"
+        echo ""
+        echo -e "${BONE}  Install tmux:${RESET}"
+    fi
     echo -e "${BONE}    Ubuntu/Debian: sudo apt install tmux${RESET}"
     echo -e "${BONE}    macOS:         brew install tmux${RESET}"
     echo -e "${BONE}    Arch:          sudo pacman -S tmux${RESET}"
     echo ""
-    echo -e "${ORANGE}  Continuing without tmux — mechcode will work in basic mode.${RESET}"
+    if [[ "$INST_LANG" == "es" ]]; then
+        echo -e "${ORANGE}  Continuando sin tmux — mechcode funcionara en modo basico.${RESET}"
+    else
+        echo -e "${ORANGE}  Continuing without tmux — mechcode will work in basic mode.${RESET}"
+    fi
     echo ""
 }
 
@@ -136,20 +192,36 @@ backup_claude_md() {
         timestamp="$(date +%Y%m%d_%H%M%S)"
         local backup_path="${CLAUDE_MD_DST}.backup.${timestamp}"
 
-        log_warning "Existing CLAUDE.md detected"
-        echo ""
-        echo -e "${BONE}  Backup will be created at: ${backup_path}${RESET}"
-        echo ""
-        echo -e -n "${ORANGE}  Continue? [y/N]: ${RESET}"
+        if [[ "$INST_LANG" == "es" ]]; then
+            log_warning "CLAUDE.md existente detectado"
+            echo ""
+            echo -e "${BONE}  Se creara backup en: ${backup_path}${RESET}"
+            echo ""
+            echo -e -n "${ORANGE}  Continuar? [y/N]: ${RESET}"
+        else
+            log_warning "Existing CLAUDE.md detected"
+            echo ""
+            echo -e "${BONE}  Backup will be created at: ${backup_path}${RESET}"
+            echo ""
+            echo -e -n "${ORANGE}  Continue? [y/N]: ${RESET}"
+        fi
         read -r confirm
         confirm=$(echo "$confirm" | tr '[:upper:]' '[:lower:]')
         if [[ "$confirm" != "y" && "$confirm" != "yes" && "$confirm" != "si" ]]; then
-            log_info "Aborted by user"
+            if [[ "$INST_LANG" == "es" ]]; then
+                log_info "Abortado por el usuario"
+            else
+                log_info "Aborted by user"
+            fi
             exit 0
         fi
 
         cp "$CLAUDE_MD_DST" "$backup_path"
-        log_success "Backup created: ${backup_path}"
+        if [[ "$INST_LANG" == "es" ]]; then
+            log_success "Backup creado: ${backup_path}"
+        else
+            log_success "Backup created: ${backup_path}"
+        fi
     fi
 }
 
@@ -160,7 +232,11 @@ install_mechcode() {
     for pyfile in mechcode.py servoskull.py servoskull_monitor.py mechcode_hook.py; do
         if [[ -f "${SCRIPT_DIR}/${pyfile}" ]]; then
             cp "${SCRIPT_DIR}/${pyfile}" "${INSTALL_DIR}/${pyfile}"
-            log_info "Installed ${pyfile}"
+            if [[ "$INST_LANG" == "es" ]]; then
+                log_info "Instalado ${pyfile}"
+            else
+                log_info "Installed ${pyfile}"
+            fi
         fi
     done
 
@@ -177,19 +253,31 @@ exec ${py_cmd} "${INSTALL_DIR}/mechcode.py" "\$@"
 WRAPPER
     chmod +x "$MECHCODE_BIN"
 
-    log_success "mechcode installed at: ${MECHCODE_BIN}"
+    if [[ "$INST_LANG" == "es" ]]; then
+        log_success "mechcode instalado en: ${MECHCODE_BIN}"
+    else
+        log_success "mechcode installed at: ${MECHCODE_BIN}"
+    fi
 }
 
 install_claude_md() {
     mkdir -p "$CLAUDE_DIR"
 
     if [[ ! -f "$CLAUDE_MD_SRC" ]]; then
-        log_error "Grimoire not found: ${CLAUDE_MD_SRC}"
+        if [[ "$INST_LANG" == "es" ]]; then
+            log_error "Grimorio no encontrado: ${CLAUDE_MD_SRC}"
+        else
+            log_error "Grimoire not found: ${CLAUDE_MD_SRC}"
+        fi
         exit 1
     fi
 
     cp "$CLAUDE_MD_SRC" "$CLAUDE_MD_DST"
-    log_success "Grimoire installed: ${CLAUDE_MD_DST}"
+    if [[ "$INST_LANG" == "es" ]]; then
+        log_success "Grimorio instalado: ${CLAUDE_MD_DST}"
+    else
+        log_success "Grimoire installed: ${CLAUDE_MD_DST}"
+    fi
 }
 
 install_hooks() {
@@ -199,7 +287,11 @@ install_hooks() {
     local hook_script="${INSTALL_DIR}/mechcode_hook.py"
 
     if [[ ! -f "$hook_script" ]]; then
-        log_warning "Hook script not found, skipping hooks setup"
+        if [[ "$INST_LANG" == "es" ]]; then
+            log_warning "Script de hook no encontrado, omitiendo configuracion"
+        else
+            log_warning "Hook script not found, skipping hooks setup"
+        fi
         return
     fi
 
@@ -278,9 +370,17 @@ print('OK')
 " 2>/dev/null
 
     if [[ $? -eq 0 ]]; then
-        log_success "Claude Code hooks installed"
+        if [[ "$INST_LANG" == "es" ]]; then
+            log_success "Hooks de Claude Code instalados"
+        else
+            log_success "Claude Code hooks installed"
+        fi
     else
-        log_warning "Could not configure hooks automatically"
+        if [[ "$INST_LANG" == "es" ]]; then
+            log_warning "No se pudieron configurar los hooks automaticamente"
+        else
+            log_warning "Could not configure hooks automatically"
+        fi
         log_info "Run 'claude /hooks' to verify hook configuration"
     fi
 }
@@ -294,7 +394,11 @@ install_shell_config() {
     log_info "Shell: ${shell_type} (${rc_file})"
 
     if grep -q "alias mech=" "$rc_file" 2>/dev/null; then
-        log_info "Alias 'mech' already exists — skipping"
+        if [[ "$INST_LANG" == "es" ]]; then
+            log_info "Alias 'mech' ya existe — omitiendo"
+        else
+            log_info "Alias 'mech' already exists — skipping"
+        fi
         return
     fi
 
@@ -342,7 +446,11 @@ complete -F _mech_completions mech
     esac
 
     echo "$alias_block" >> "$rc_file"
-    log_success "Alias + completions added to: ${rc_file}"
+    if [[ "$INST_LANG" == "es" ]]; then
+        log_success "Alias + completions agregados a: ${rc_file}"
+    else
+        log_success "Alias + completions added to: ${rc_file}"
+    fi
 
     # Ensure ~/.local/bin is in PATH
     if ! echo "$PATH" | tr ':' '\n' | grep -q "${INSTALL_DIR}"; then
@@ -350,7 +458,11 @@ complete -F _mech_completions mech
             fish) echo "set -gx PATH ${INSTALL_DIR} \$PATH" >> "$rc_file" ;;
             *)    echo "export PATH=\"${INSTALL_DIR}:\$PATH\"" >> "$rc_file" ;;
         esac
-        log_info "PATH updated in ${rc_file}"
+        if [[ "$INST_LANG" == "es" ]]; then
+            log_info "PATH actualizado en ${rc_file}"
+        else
+            log_info "PATH updated in ${rc_file}"
+        fi
     fi
 }
 
@@ -372,17 +484,34 @@ print(get_frame('SUCCESS', compact=True))
 
     echo ""
     echo -e "${GOLD}=================================================================${RESET}"
-    echo -e "${GOLD}  Rite of Initiation complete. The Forge is active.${RESET}"
-    echo -e "${GREEN}  May the Omnissiah guide your algorithms, Magos.${RESET}"
+    if [[ "$INST_LANG" == "es" ]]; then
+        echo -e "${GOLD}  Rito de Iniciacion completado. La Forja esta activa.${RESET}"
+        echo -e "${GREEN}  Que el Omnissiah guie tus algoritmos, Magos.${RESET}"
+    else
+        echo -e "${GOLD}  Rite of Initiation complete. The Forge is active.${RESET}"
+        echo -e "${GREEN}  May the Omnissiah guide your algorithms, Magos.${RESET}"
+    fi
     echo -e "${GOLD}=================================================================${RESET}"
     echo ""
-    echo -e "${BONE}  Usage:${RESET}"
-    echo -e "${BONE}    mech --help        ${DIM}->${BONE} All commands${RESET}"
-    echo -e "${BONE}    mech <claude args> ${DIM}->${BONE} Launch with servo-skull sidebar${RESET}"
-    echo -e "${BONE}    mech status        ${DIM}->${BONE} Current config + stats${RESET}"
-    echo -e "${BONE}    mech kill          ${DIM}->${BONE} Kill tmux session${RESET}"
+    if [[ "$INST_LANG" == "es" ]]; then
+        echo -e "${BONE}  Uso:${RESET}"
+        echo -e "${BONE}    mech --help        ${DIM}->${BONE} Todos los comandos${RESET}"
+        echo -e "${BONE}    mech <claude args> ${DIM}->${BONE} Lanzar con sidebar servo-skull${RESET}"
+        echo -e "${BONE}    mech status        ${DIM}->${BONE} Config y estadisticas${RESET}"
+        echo -e "${BONE}    mech kill          ${DIM}->${BONE} Terminar sesion tmux${RESET}"
+    else
+        echo -e "${BONE}  Usage:${RESET}"
+        echo -e "${BONE}    mech --help        ${DIM}->${BONE} All commands${RESET}"
+        echo -e "${BONE}    mech <claude args> ${DIM}->${BONE} Launch with servo-skull sidebar${RESET}"
+        echo -e "${BONE}    mech status        ${DIM}->${BONE} Current config + stats${RESET}"
+        echo -e "${BONE}    mech kill          ${DIM}->${BONE} Kill tmux session${RESET}"
+    fi
     echo ""
-    echo -e "${DIM}  Restart terminal or run: source $(get_rc_file "$(detect_shell)")${RESET}"
+    if [[ "$INST_LANG" == "es" ]]; then
+        echo -e "${DIM}  Reinicia tu terminal o ejecuta: source $(get_rc_file "$(detect_shell)")${RESET}"
+    else
+        echo -e "${DIM}  Restart terminal or run: source $(get_rc_file "$(detect_shell)")${RESET}"
+    fi
     echo -e "${DIM}  01001100 01000001 01010101 01010011 — LAUS OMNISSIAH${RESET}"
     echo ""
 }
@@ -393,7 +522,11 @@ main() {
     print_banner
     print_disclaimer
 
-    log_info "Running system checks..."
+    if [[ "$INST_LANG" == "es" ]]; then
+        log_info "Verificando sistema..."
+    else
+        log_info "Running system checks..."
+    fi
     echo ""
 
     check_claude
@@ -404,7 +537,11 @@ main() {
     backup_claude_md
     echo ""
 
-    log_info "=== INSTALLING COMPONENTS ==="
+    if [[ "$INST_LANG" == "es" ]]; then
+        log_info "=== INSTALANDO COMPONENTES ==="
+    else
+        log_info "=== INSTALLING COMPONENTS ==="
+    fi
     echo ""
     install_mechcode
     install_claude_md

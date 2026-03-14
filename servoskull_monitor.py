@@ -21,6 +21,25 @@ from servoskull import (
 )
 
 STATE_FILE = Path.home() / ".mechcode_state.json"
+CONFIG_FILE = Path.home() / ".mechcode_config.json"
+
+
+def detect_language():
+    """Detect active language from config or system locale."""
+    try:
+        if CONFIG_FILE.exists():
+            cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            lang = cfg.get("language")
+            if lang and lang != "auto":
+                return lang
+    except (json.JSONDecodeError, OSError):
+        pass
+    for var in ("LANG", "LC_ALL", "LANGUAGE", "LC_MESSAGES"):
+        val = os.environ.get(var, "")
+        if val.lower().startswith("es"):
+            return "es"
+    return "en"
+
 
 # Thinking animation cycles through these frames
 THINKING_FRAMES = ["THINKING", "THINKING_2", "THINKING_3", "THINKING_2"]
@@ -38,16 +57,58 @@ BINHARIC_FRAGMENTS = [
     "11100101 00011010 01101100",
 ]
 
-LITANIES = [
-    "The Omnissiah protects.",
-    "Flesh is weak.",
-    "Knowledge is power.",
-    "Logic is divine.",
-    "In code we trust.",
-    "The Machine endures.",
-    "Iron within.",
-    "Data is sacred.",
-]
+LITANIES = {
+    "en": [
+        "The Omnissiah protects.",
+        "Flesh is weak.",
+        "Knowledge is power.",
+        "Logic is divine.",
+        "In code we trust.",
+        "The Machine endures.",
+        "Iron within.",
+        "Data is sacred.",
+    ],
+    "es": [
+        "El Omnissiah protege.",
+        "La carne es debil.",
+        "El conocimiento es poder.",
+        "La logica es divina.",
+        "En el codigo confiamos.",
+        "La Maquina perdura.",
+        "Hierro interior.",
+        "Los datos son sagrados.",
+    ],
+}
+
+# Localized UI strings for the monitor
+MONITOR_I18N = {
+    "en": {
+        "idle": "IDLE",
+        "thinking": "THINKING",
+        "rite_complete": "RITE COMPLETE",
+        "heresy": "HERESY!",
+        "servitors": "SERVITORS",
+        "stats": "STATS",
+        "rites": "Rites:",
+        "heresies": "Heresies:",
+        "tools": "Tools:",
+        "uptime": "Uptime:",
+        "awaiting": "AWAITING COMMAND",
+    },
+    "es": {
+        "idle": "INACTIVO",
+        "thinking": "PROCESANDO",
+        "rite_complete": "RITO COMPLETO",
+        "heresy": "HEREJIA!",
+        "servitors": "SERVITORES",
+        "stats": "ESTADISTICAS",
+        "rites": "Ritos:",
+        "heresies": "Herejias:",
+        "tools": "Herram.:",
+        "uptime": "Activo:",
+        "awaiting": "AGUARDANDO INSTRUCCIONES",
+    },
+}
 
 # Agent type icons (small servo-skull representations)
 AGENT_ICONS = {
@@ -126,40 +187,39 @@ def draw_header(w):
     return "\n".join(lines)
 
 
-def draw_status(state_data, w):
+def draw_status(state_data, w, lang="en"):
     """Draw the current status section."""
+    t = MONITOR_I18N.get(lang, MONITOR_I18N["en"])
+    msg_key = "message_es" if lang == "es" else "message_en"
+
     if state_data is None:
         main_state = "IDLE"
-        msg = "AWAITING COMMAND"
+        msg = t["awaiting"]
         tool = None
         detail = None
     else:
         main_state = state_data.get("main_state", "IDLE")
-        msg = state_data.get("message_en", "AWAITING COMMAND")
+        msg = state_data.get(msg_key) or state_data.get("message_en", t["awaiting"])
         tool = state_data.get("tool")
         detail = state_data.get("tool_detail")
 
     color = STATE_COLORS.get(main_state, GREY_COGIT)
     lines = []
 
-    # State line
-    state_display = main_state
     if main_state == "THINKING":
-        state_display = "THINKING \u03c8"
+        state_display = f"{t['thinking']} \u03c8"
     elif main_state == "SUCCESS":
-        state_display = "RITE COMPLETE \u2021"
+        state_display = f"{t['rite_complete']} \u2021"
     elif main_state == "ERROR":
-        state_display = "HERESY! \u2620"
-    elif main_state == "IDLE":
-        state_display = "IDLE \u2699"
+        state_display = f"{t['heresy']} \u2620"
+    else:
+        state_display = f"{t['idle']} \u2699"
 
     lines.append(f"{color}{BOLD}{truncate(state_display, w)}{RESET}")
 
-    # Message
     if msg:
         lines.append(f"{color}{truncate(msg, w)}{RESET}")
 
-    # Tool + detail
     if tool:
         tool_line = f"[{tool}]"
         if detail:
@@ -169,7 +229,7 @@ def draw_status(state_data, w):
     return "\n".join(lines)
 
 
-def draw_agents(state_data, w):
+def draw_agents(state_data, w, lang="en"):
     """Draw the agent hierarchy section."""
     if state_data is None:
         return ""
@@ -178,16 +238,19 @@ def draw_agents(state_data, w):
     if not agents:
         return ""
 
+    t = MONITOR_I18N.get(lang, MONITOR_I18N["en"])
+    name_key = "name_es" if lang == "es" else "name_en"
+
     lines = []
     lines.append(draw_separator(w))
     count = len(agents)
-    header = f" SERVITORS [{count}]"
+    header = f" {t['servitors']} [{count}]"
     lines.append(f"{GOLD_OMNI}{truncate(header, w)}{RESET}")
 
-    for agent_id, info in list(agents.items())[:5]:  # max 5 displayed
+    for agent_id, info in list(agents.items())[:5]:
         atype = info.get("type", "unknown")
         icon = AGENT_ICONS.get(atype, "\u2020")
-        name = info.get("name_en", atype.upper())
+        name = info.get(name_key) or info.get("name_en", atype.upper())
         elapsed = time.time() - info.get("started", time.time())
         time_str = format_uptime(elapsed)
 
@@ -196,13 +259,15 @@ def draw_agents(state_data, w):
         lines.append(f"{GREY_COGIT}   {time_str}{RESET}")
 
     if count > 5:
-        lines.append(f"{GREY_COGIT} +{count - 5} more...{RESET}")
+        lines.append(f"{GREY_COGIT} +{count - 5} ...{RESET}")
 
     return "\n".join(lines)
 
 
-def draw_stats(state_data, w):
+def draw_stats(state_data, w, lang="en"):
     """Draw statistics section."""
+    t = MONITOR_I18N.get(lang, MONITOR_I18N["en"])
+
     if state_data is None:
         stats = {}
     else:
@@ -216,11 +281,11 @@ def draw_stats(state_data, w):
 
     lines = []
     lines.append(draw_separator(w))
-    lines.append(f"{GOLD_OMNI} STATS{RESET}")
-    lines.append(f"{GREY_COGIT} Rites:    {GREEN_BIONIC}{rites}{RESET}")
-    lines.append(f"{GREY_COGIT} Heresies: {RED_MARS}{heresies}{RESET}")
-    lines.append(f"{GREY_COGIT} Tools:    {BONE_SACRED}{tools}{RESET}")
-    lines.append(f"{GREY_COGIT} Uptime:   {BONE_SACRED}{uptime}{RESET}")
+    lines.append(f"{GOLD_OMNI} {t['stats']}{RESET}")
+    lines.append(f"{GREY_COGIT} {t['rites']:<10}{GREEN_BIONIC}{rites}{RESET}")
+    lines.append(f"{GREY_COGIT} {t['heresies']:<10}{RED_MARS}{heresies}{RESET}")
+    lines.append(f"{GREY_COGIT} {t['tools']:<10}{BONE_SACRED}{tools}{RESET}")
+    lines.append(f"{GREY_COGIT} {t['uptime']:<10}{BONE_SACRED}{uptime}{RESET}")
 
     return "\n".join(lines)
 
@@ -236,9 +301,10 @@ def draw_footer(w):
     return f"{GOLD_OMNI}{center('\u2550\u2550\u2550\u2699 OMNISSIAH \u2699\u2550\u2550\u2550', w)}{RESET}"
 
 
-def draw_litany(w):
+def draw_litany(w, lang="en"):
     """Draw a random litany."""
-    litany = random.choice(LITANIES)
+    pool = LITANIES.get(lang, LITANIES["en"])
+    litany = random.choice(pool)
     return f"{GREY_COGIT}{DIM}{truncate(litany, w)}{RESET}"
 
 
@@ -260,11 +326,13 @@ def show_cursor():
 
 def main():
     hide_cursor()
+    lang = detect_language()
     thinking_idx = 0
     last_state = None
     last_skull = None
     litany_timer = time.time()
-    current_litany = random.choice(LITANIES)
+    litany_pool = LITANIES.get(lang, LITANIES["en"])
+    current_litany = random.choice(litany_pool)
 
     try:
         while True:
@@ -302,7 +370,7 @@ def main():
 
             # Rotate litany every 30s
             if time.time() - litany_timer > 30:
-                current_litany = random.choice(LITANIES)
+                current_litany = random.choice(litany_pool)
                 litany_timer = time.time()
 
             # Build full display
@@ -311,14 +379,14 @@ def main():
             output_parts.append("")
             output_parts.append(last_skull)
             output_parts.append("")
-            output_parts.append(draw_status(state_data, w))
+            output_parts.append(draw_status(state_data, w, lang))
             output_parts.append(draw_binharic(w))
 
-            agents_section = draw_agents(state_data, w)
+            agents_section = draw_agents(state_data, w, lang)
             if agents_section:
                 output_parts.append(agents_section)
 
-            output_parts.append(draw_stats(state_data, w))
+            output_parts.append(draw_stats(state_data, w, lang))
             output_parts.append("")
             output_parts.append(f"{GREY_COGIT}{DIM}{truncate(current_litany, w)}{RESET}")
             output_parts.append("")
