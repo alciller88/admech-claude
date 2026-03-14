@@ -320,7 +320,7 @@ install_mechcode() {
     mkdir -p "$INSTALL_DIR"
 
     # Copy all Python files
-    for pyfile in mechcode.py servoskull.py servoskull_monitor.py mechcode_hook.py; do
+    for pyfile in mechcode.py servoskull.py servoskull_monitor.py mechcode_hook.py shared_config.py; do
         if [[ -f "${SCRIPT_DIR}/${pyfile}" ]]; then
             cp "${SCRIPT_DIR}/${pyfile}" "${INSTALL_DIR}/${pyfile}"
             if [[ "$INST_LANG" == "es" ]]; then
@@ -624,7 +624,7 @@ post_install_validate() {
     # 1. Check that all files were copied to ~/.local/bin
     local missing_files=""
     local files_ok="yes"
-    for pyfile in mechcode.py servoskull.py servoskull_monitor.py mechcode_hook.py mechcode; do
+    for pyfile in mechcode.py servoskull.py servoskull_monitor.py mechcode_hook.py shared_config.py mechcode; do
         if [[ ! -f "${INSTALL_DIR}/${pyfile}" ]]; then
             files_ok="no"
             if [[ -z "$missing_files" ]]; then

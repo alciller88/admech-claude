@@ -14,6 +14,7 @@ import json
 import os
 import platform
 import random
+import shlex
 import shutil
 import subprocess
 import sys
@@ -21,36 +22,25 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from shared_config import (
+    STATE_FILE, CONFIG_FILE as CONFIG_PATH,
+    SIDEBAR_WIDTH, detect_system_language, get_active_language,
+)
+
 # === VERSION ===
 VERSION = "1.0.0-beta"
 
 # === PATHS ===
-CONFIG_PATH = Path.home() / ".mechcode_config.json"
-STATE_FILE = Path.home() / ".mechcode_state.json"
 SCRIPT_DIR = Path(__file__).resolve().parent
 MONITOR_SCRIPT = SCRIPT_DIR / "servoskull_monitor.py"
 
 # === TMUX CONFIG ===
 TMUX_SESSION = "mechanicus"
-SIDEBAR_WIDTH = 32  # columns for the right pane
-
-# === LANGUAGE DETECTION ===
-
-def detect_system_language():
-    """Detect language from system locale. Returns 'es' or 'en'."""
-    for var in ("LANG", "LC_ALL", "LANGUAGE", "LC_MESSAGES"):
-        val = os.environ.get(var, "")
-        if val.lower().startswith("es"):
-            return "es"
-    return "en"
 
 
 def get_lang(cfg):
     """Get active language. Config overrides system detection."""
-    lang = cfg.get("language")
-    if lang and lang != "auto":
-        return lang
-    return detect_system_language()
+    return get_active_language(cfg)
 
 
 # === I18N STRINGS ===
@@ -285,12 +275,16 @@ def load_config():
         try:
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
+            if not isinstance(cfg, dict):
+                print(f"[mechcode] Warning: config is not a dict, using defaults", file=sys.stderr)
+                return dict(DEFAULT_CONFIG)
             for k, v in DEFAULT_CONFIG.items():
                 if k not in cfg:
                     cfg[k] = v
             return cfg
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"[mechcode] Warning: corrupt config at {CONFIG_PATH}, using defaults: {e}",
+                  file=sys.stderr)
     return dict(DEFAULT_CONFIG)
 
 
@@ -383,15 +377,11 @@ def launch_tmux_session(claude_args, cfg):
     # Reset state for new session
     reset_state()
 
-    # Build claude command with args
-    claude_cmd = claude_path
+    # Build claude command with args (proper shell escaping)
+    claude_cmd = shlex.quote(claude_path)
     if claude_args:
-        # Escape args for shell
-        escaped_args = " ".join(
-            f"'{a}'" if " " in a or "'" not in a else f'"{a}"'
-            for a in claude_args
-        )
-        claude_cmd = f"{claude_path} {escaped_args}"
+        escaped_args = " ".join(shlex.quote(a) for a in claude_args)
+        claude_cmd = f"{claude_cmd} {escaped_args}"
 
     if tmux_session_exists():
         # Attach to existing session
@@ -667,7 +657,8 @@ def cmd_diagnose(cfg):
     # 7. Scripts in ~/.local/bin
     local_bin = Path.home() / ".local" / "bin"
     expected_scripts = [
-        "mechcode.py", "servoskull.py", "servoskull_monitor.py", "mechcode_hook.py"
+        "mechcode.py", "servoskull.py", "servoskull_monitor.py",
+        "mechcode_hook.py", "shared_config.py",
     ]
     missing_scripts = [s for s in expected_scripts if not (local_bin / s).exists()]
     if not missing_scripts:

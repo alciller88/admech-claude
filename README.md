@@ -20,12 +20,6 @@
 ## ⚙ Quick Install
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/TU_USUARIO/mechanicus-terminal/main/install.sh | bash
-```
-
-Or clone and install manually:
-
-```bash
 git clone https://github.com/TU_USUARIO/mechanicus-terminal.git
 cd mechanicus-terminal
 bash install.sh
@@ -43,9 +37,17 @@ bash install.sh
 | **Anthropic Account** | With Claude Code access |
 | **Shell** | bash / zsh / fish |
 
+### Platform Compatibility
+
+| Platform | Status |
+|----------|--------|
+| **Linux (native)** | Fully supported |
+| **WSL2 (Ubuntu/Debian/Fedora/Arch)** | Fully supported |
+| **macOS** | Supported (install tmux via Homebrew) |
+
 ---
 
-## ⚙ Quick Commands
+## ⚙ Commands
 
 | Command | Action |
 |---------|--------|
@@ -58,6 +60,8 @@ bash install.sh
 | `mech esp` | Switch language to Spanish |
 | `mech eng` | Switch language to English |
 | `mech sidebar <N>` | Set sidebar width (20-60 cols) |
+| `mech diagnose` | Run system diagnostics (auspex scan) |
+| `mech version` | Show version + platform info |
 | `mech kill` | Kill tmux session |
 | `mech --help` | Full command codex |
 
@@ -65,7 +69,7 @@ All other arguments launch `claude` in a tmux session with an animated servo-sku
 
 ---
 
-## ψ How It Works
+## ψ How It Works — Architecture
 
 ```
 ┌──────────────────────────────────┬──────────────────────┐
@@ -79,9 +83,72 @@ All other arguments launch `claude` in a tmux session with an animated servo-sku
 ```
 
 Claude Code runs **unmodified** in its own tmux pane. Hooks fire on every
-tool call and write state to a shared JSON file. The servo-skull monitor
-reads that file and displays animated status — the skull changes based on
-what Claude is doing, and multiple agents appear as Servitors in a hierarchy.
+tool call and write state to a shared JSON file (`~/.mechcode_state.json`).
+The servo-skull monitor reads that file and displays animated status — the
+skull changes based on what Claude is doing, and multiple agents appear as
+Servitors in a hierarchy.
+
+### Key Components
+
+| File | Purpose |
+|------|---------|
+| `mechcode.py` | Main launcher — creates tmux session, handles `mech` commands |
+| `servoskull.py` | Pixel art renderer — generates servo-skull frames with ANSI true color |
+| `servoskull_monitor.py` | Sidebar monitor loop — reads state, animates skull in right pane |
+| `mechcode_hook.py` | Claude Code hook — captures tool events, writes state JSON |
+| `shared_config.py` | Shared constants — paths, animation params, agent types |
+| `config/CLAUDE.md` | Prompt injection — Mechanicus tone for Claude responses |
+
+### Hooks
+
+The installer registers `mechcode_hook.py` as a Claude Code hook in `~/.claude/settings.json`.
+It captures these events:
+
+- **PreToolUse** — skull enters THINKING state
+- **PostToolUse** — skull flashes SUCCESS (green)
+- **PostToolUseFailure** — skull flashes ERROR (red, with corruption effects)
+- **SubagentStart/Stop** — agents appear/disappear in the Servitor hierarchy
+- **SessionStart** — resets stats counter
+- **Stop** — skull returns to IDLE
+
+---
+
+## † Troubleshooting
+
+### `mech: command not found`
+Restart your terminal or run:
+```bash
+source ~/.bashrc   # or ~/.zshrc
+```
+If it still fails, check that `~/.local/bin` is in your PATH:
+```bash
+echo $PATH | grep -q ".local/bin" && echo "OK" || echo "Missing — add to your shell profile"
+```
+
+### Servo-skull sidebar not appearing
+1. Verify tmux is installed: `tmux -V`
+2. Check that mode is `full`: `mech status`
+3. Run diagnostics: `mech diagnose`
+
+### Hooks not firing (skull stays IDLE)
+1. Run `mech diagnose` and check the "Claude hooks configured" line
+2. Verify hooks are in `~/.claude/settings.json`:
+   ```bash
+   cat ~/.claude/settings.json | grep mechcode_hook
+   ```
+3. If missing, re-run `bash install.sh`
+
+### State file corrupted
+```bash
+rm ~/.mechcode_state.json
+```
+A fresh state file will be created on the next session.
+
+### Debug mode
+Set `MECHCODE_DEBUG=1` to see hook activity on stderr:
+```bash
+export MECHCODE_DEBUG=1
+```
 
 ---
 

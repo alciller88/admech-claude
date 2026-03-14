@@ -4,12 +4,20 @@ mechcode_hook.py — Claude Code hook for Mechanicus Terminal
 Reads tool call info from stdin, writes state to ~/.mechcode_state.json
 for the servo-skull monitor to display.
 """
+import fcntl
 import json
 import os
 import sys
 import tempfile
 import time
 from pathlib import Path
+
+from shared_config import (
+    STATE_FILE,
+    HOOK_PRE_TOOL_USE, HOOK_POST_TOOL_USE, HOOK_POST_TOOL_FAILURE,
+    HOOK_SUBAGENT_START, HOOK_SUBAGENT_STOP, HOOK_SESSION_START, HOOK_STOP,
+    AGENT_TYPES,
+)
 
 DEBUG = os.environ.get("MECHCODE_DEBUG") == "1"
 
@@ -19,9 +27,8 @@ def debug_log(msg):
     if DEBUG:
         print(f"[mechcode_hook] {msg}", file=sys.stderr, flush=True)
 
-STATE_FILE = Path.home() / ".mechcode_state.json"
 
-# Tool name → (message_es, message_en, skull_frame_hint)
+# Tool name -> (message_es, message_en)
 TOOL_MESSAGES = {
     "Read":       ("ESCANEANDO PERGAMINO DE DATOS",        "SCANNING DATA-SCROLL"),
     "Write":      ("INSCRIBIENDO EN EL REGISTRO ETERNO",   "INSCRIBING THE ETERNAL REGISTRY"),
@@ -37,24 +44,6 @@ TOOL_MESSAGES = {
     "TaskCreate": ("CREANDO DIRECTIVA",                    "CREATING DIRECTIVE"),
     "TaskUpdate": ("ACTUALIZANDO DIRECTIVA",               "UPDATING DIRECTIVE"),
 }
-
-AGENT_TYPE_NAMES = {
-    "Explore":    ("SCRYERSKULL — EXPLORADOR",   "SCRYERSKULL — EXPLORER"),
-    "Plan":       ("DATA-SKULL — ESTRATEGA",     "DATA-SKULL — STRATEGIST"),
-    "general-purpose": ("MONO-TASK INFOSLAVE",   "MONO-TASK INFOSLAVE"),
-    "claude-code-guide": ("LEXMECHANIC",         "LEXMECHANIC"),
-}
-
-
-def load_state():
-    try:
-        if STATE_FILE.exists():
-            data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-            debug_log(f"State loaded: main_state={data.get('main_state')}")
-            return data
-    except (json.JSONDecodeError, OSError) as e:
-        print(f"[mechcode_hook] Failed to load state: {e}", file=sys.stderr, flush=True)
-    return new_state()
 
 
 def new_state():
@@ -75,8 +64,20 @@ def new_state():
     }
 
 
-def save_state(state):
-    """Atomic write: temp file + os.rename to prevent corruption mid-read."""
+def load_state_locked(lock_fd):
+    """Load state while holding the lock."""
+    try:
+        if STATE_FILE.exists():
+            data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            debug_log(f"State loaded: main_state={data.get('main_state')}")
+            return data
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"[mechcode_hook] Failed to load state: {e}", file=sys.stderr, flush=True)
+    return new_state()
+
+
+def save_state_locked(state, lock_fd):
+    """Atomic write while holding the lock: temp file + os.replace."""
     try:
         content = json.dumps(state, ensure_ascii=False, indent=2)
         fd, tmp_path = tempfile.mkstemp(
@@ -103,9 +104,11 @@ def save_state(state):
 
 def extract_detail(tool, tool_input):
     """Extract a short description from tool input."""
+    if not isinstance(tool_input, dict):
+        return ""
     if tool in ("Read", "Write", "Edit"):
         fp = tool_input.get("file_path", "")
-        return fp.split("/")[-1] if fp else ""
+        return os.path.basename(fp) if fp else ""
     if tool == "Bash":
         cmd = tool_input.get("command", "")
         return (cmd[:35] + "...") if len(cmd) > 35 else cmd
@@ -117,7 +120,7 @@ def extract_detail(tool, tool_input):
         return tool_input.get("description", "")[:30]
     if tool == "WebFetch":
         url = tool_input.get("url", "")
-        return url.split("/")[-1][:30] if url else ""
+        return os.path.basename(url)[:30] if url else ""
     if tool == "WebSearch":
         return tool_input.get("query", "")[:30]
     return ""
@@ -131,69 +134,100 @@ def main():
         print(f"[mechcode_hook] Failed to parse stdin: {e}", file=sys.stderr, flush=True)
         return
 
+    if not isinstance(data, dict):
+        print("[mechcode_hook] Invalid input: expected JSON object", file=sys.stderr, flush=True)
+        return
+
     event = data.get("hook_event_name", "")
     tool = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
     debug_log(f"Event received: {event} tool={tool}")
 
-    state = load_state()
-    state["timestamp"] = time.time()
+    if not isinstance(event, str):
+        print("[mechcode_hook] Invalid hook_event_name type", file=sys.stderr, flush=True)
+        return
 
-    if event == "PreToolUse":
-        state["main_state"] = "THINKING"
-        state["tool"] = tool
-        state["tool_detail"] = extract_detail(tool, tool_input)
-        msgs = TOOL_MESSAGES.get(tool, ("EJECUTANDO RITO", "EXECUTING RITE"))
-        state["message_es"] = msgs[0]
-        state["message_en"] = msgs[1]
-        state["stats"]["tools_invoked"] = state["stats"].get("tools_invoked", 0) + 1
+    # Acquire advisory lock for read-modify-write atomicity
+    lock_path = STATE_FILE.parent / ".mechcode_state.lock"
+    lock_fd = None
+    try:
+        lock_fd = open(lock_path, "w")
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
 
-    elif event == "PostToolUse":
-        state["main_state"] = "SUCCESS"
-        state["tool"] = tool
-        state["message_es"] = "RITO COMPLETADO"
-        state["message_en"] = "RITE COMPLETE"
-        state["stats"]["rites_completed"] = state["stats"].get("rites_completed", 0) + 1
+        state = load_state_locked(lock_fd)
+        state["timestamp"] = time.time()
 
-    elif event == "PostToolUseFailure":
-        state["main_state"] = "ERROR"
-        state["tool"] = tool
-        state["message_es"] = "HEREJIA DETECTADA"
-        state["message_en"] = "TECH-HERESY IDENTIFIED"
-        state["stats"]["heresies_detected"] = state["stats"].get("heresies_detected", 0) + 1
+        if event == HOOK_PRE_TOOL_USE:
+            state["main_state"] = "THINKING"
+            state["tool"] = tool
+            state["tool_detail"] = extract_detail(tool, tool_input)
+            msgs = TOOL_MESSAGES.get(tool, ("EJECUTANDO RITO", "EXECUTING RITE"))
+            state["message_es"] = msgs[0]
+            state["message_en"] = msgs[1]
+            state["stats"]["tools_invoked"] = state["stats"].get("tools_invoked", 0) + 1
 
-    elif event == "SubagentStart":
-        agent_id = data.get("agent_id", f"srv-{int(time.time())}")
-        agent_type = data.get("agent_type", "unknown")
-        names = AGENT_TYPE_NAMES.get(agent_type, (agent_type.upper(), agent_type.upper()))
-        state["agents"][agent_id] = {
-            "type": agent_type,
-            "name_es": names[0],
-            "name_en": names[1],
-            "state": "active",
-            "started": time.time(),
-        }
+        elif event == HOOK_POST_TOOL_USE:
+            state["main_state"] = "SUCCESS"
+            state["tool"] = tool
+            state["message_es"] = "RITO COMPLETADO"
+            state["message_en"] = "RITE COMPLETE"
+            state["stats"]["rites_completed"] = state["stats"].get("rites_completed", 0) + 1
 
-    elif event == "SubagentStop":
-        agent_id = data.get("agent_id", "")
-        state["agents"].pop(agent_id, None)
+        elif event == HOOK_POST_TOOL_FAILURE:
+            state["main_state"] = "ERROR"
+            state["tool"] = tool
+            state["message_es"] = "HEREJIA DETECTADA"
+            state["message_en"] = "TECH-HERESY IDENTIFIED"
+            state["stats"]["heresies_detected"] = state["stats"].get("heresies_detected", 0) + 1
 
-    elif event == "SessionStart":
-        state = new_state()
+        elif event == HOOK_SUBAGENT_START:
+            agent_id = data.get("agent_id", f"srv-{int(time.time())}")
+            agent_type = data.get("agent_type", "unknown")
+            info = AGENT_TYPES.get(agent_type)
+            if info:
+                name_es = info["name_es"]
+                name_en = info["name_en"]
+            else:
+                name_es = agent_type.upper()
+                name_en = agent_type.upper()
+            state["agents"][str(agent_id)] = {
+                "type": agent_type,
+                "name_es": name_es,
+                "name_en": name_en,
+                "state": "active",
+                "started": time.time(),
+            }
 
-    elif event == "Stop":
-        state["main_state"] = "IDLE"
-        state["tool"] = None
-        state["tool_detail"] = None
-        state["message_es"] = "AGUARDANDO INSTRUCCIONES"
-        state["message_en"] = "AWAITING COMMAND"
+        elif event == HOOK_SUBAGENT_STOP:
+            agent_id = str(data.get("agent_id", ""))
+            state["agents"].pop(agent_id, None)
 
-    save_state(state)
+        elif event == HOOK_SESSION_START:
+            state = new_state()
+
+        elif event == HOOK_STOP:
+            state["main_state"] = "IDLE"
+            state["tool"] = None
+            state["tool_detail"] = None
+            state["message_es"] = "AGUARDANDO INSTRUCCIONES"
+            state["message_en"] = "AWAITING COMMAND"
+
+        save_state_locked(state, lock_fd)
+
+    finally:
+        if lock_fd is not None:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                lock_fd.close()
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":
     try:
         main()
+    except KeyboardInterrupt:
+        pass
     except Exception as e:
         print(f"[mechcode_hook] Unexpected error: {e}", file=sys.stderr, flush=True)
     finally:

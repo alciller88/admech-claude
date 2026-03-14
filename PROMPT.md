@@ -7,27 +7,29 @@ y las restricciones legales. Todo el proyecto debe ser coherente con ambos docum
 ──────────────────────────────────────────────────────────
 FASE 1 — EL ARTE PRIMERO: servoskull.py
 ──────────────────────────────────────────────────────────
-Crea servoskull.py con el servo-cráneo ASCII canónico del Adeptus Mechanicus.
+Crea servoskull.py con el servo-cráneo en pixel art usando Unicode half-block
+characters + ANSI true color.
 
 Referencia visual obligatoria: símbolo oficial del Adeptus Mechanicus.
 DEBE tener:
 - Mitad izquierda orgánica (hueso/carne), mitad derecha biónica (metal, implantes, cables)
-- Corona/halo circular con pinchos — inscripciones bináricas en el borde
+- Ceja con dientes de engranaje dorados
 - Ojo izquierdo: cuenca oscura orgánica
-- Ojo derecho: sensor circular con anillos concéntricos de auspex/radar parpadeantes
-- Cables, tubos o mecano-tentáculos emergiendo de mandíbula y cuello
-- Marca del Omnissiah visible (⚙ o ☿)
+- Ojo derecho: sensor circular con anillos concéntricos de lente
+- Cables emergiendo de los laterales
+- Columna vertebral metálica inferior
 
-Implementa 6 frames con colores ANSI (paleta de CONTEXT.md sección IX):
-  IDLE        → sensor apagado, estático
-  THINKING_1  → anillo exterior del sensor activo
-  THINKING_2  → anillos expansivos, binharic estático de fondo
-  THINKING_3  → todos los anillos activos, parpadeo máximo
-  ERROR       → rojo dominante (#CC0000), data-stream corrupto, símbolo ☠
-  SUCCESS     → dorado/verde, halo brillando, símbolo ‡ LAUS OMNISSIAH
+Dos modos de renderizado:
+  COMPACT (28x24 pixels → 28 chars x 12 lines) — para sidebar tmux
+  FULL    (60x48 pixels → 60 chars x 24 lines) — para display standalone
 
-Ancho: 80 chars. Altura: máximo 30 líneas.
-Ejecuta el script al final y muéstrame el output visual de los 6 frames.
+Implementa frames con animación paramétrica:
+  IDLE        → sensor apagado, breathing effect (intensidad 0.65-1.0 via seno)
+  THINKING    → lente naranja/roja con fase continua (interpolación de colores)
+  ERROR       → rojo dominante, sparks en zonas de cables/spine, flicker 4 frames
+  SUCCESS     → verde, halo brillando
+
+Ejecuta el script al final y muéstrame el output visual.
 NO pases a Fase 2 sin mi confirmación de que el arte es digno del Omnissiah.
 
 ──────────────────────────────────────────────────────────
@@ -58,44 +60,54 @@ OBLIGATORIO: Laus Omnissiah, Magos, Rito, Herejía, Scrapcode, STC, Noosfera,
              Forja, Purga, Espíritu de Máquina, Cant Mechanicus.
 
 Usar litanías canónicas del pool de CONTEXT.md sección VIII cuando sea apropiado.
-Mostrarme el contenido completo del fichero para revisión.
 NO pases a Fase 3 sin mi confirmación.
 
 ──────────────────────────────────────────────────────────
-FASE 3 — EL WRAPPER: mechcode.py
+FASE 3 — EL WRAPPER: mechcode.py (tmux + hooks)
 ──────────────────────────────────────────────────────────
-Crea mechcode.py ejecutable, proxy transparente de claude.
+Crea mechcode.py — lanzador tmux con sidebar de servo-skull.
+
+ARQUITECTURA:
+- Panel izquierdo: claude (TUI nativo, sin modificar)
+- Panel derecho: servoskull_monitor.py (animación en tiempo real)
+- Comunicación: hooks de Claude Code escriben estado a ~/.mechcode_state.json
+- El monitor lee el archivo de estado y actualiza la animación
 
 COMANDOS RÁPIDOS (interceptar ANTES de pasar a claude):
-  mech on|enable    → mode=full, servo-skull IDLE + "⚙ FORJA ACTIVADA ⚙"
-  mech off|disable  → mode=off, "PROTOCOLO SUSPENDIDO — MODO SILENCIO"
-  mech ascii        → toggle ascii on/off
-  mech quiet        → mode=quiet
-  mech full         → mode=full
-  mech stealth      → mode=stealth + "Modo Encubierto — la Noosfera observa en silencio"
-  mech status       → tabla config + stats (herejías detectadas, ritos completados, uptime)
+  mech on|enable    → mode=full, "⚙ FORJA ACTIVADA ⚙"
+  mech off|disable  → mode=off, passthrough directo a claude
+  mech status       → tabla config + stats (herejías, ritos, uptime)
   mech theme <name> → switch paleta (rojo/verde/hueso/golden)
-  mech lore         → litanía aleatoria del pool de CONTEXT.md sección VIII
-  mec esp           → Cambia idioma a español
-  mec eng           → Cambia idioma a inglés
+  mech lore         → letanía aleatoria
+  mech esp          → Cambia idioma a español
+  mech eng          → Cambia idioma a inglés
+  mech sidebar <N>  → Ancho del sidebar (20-60 cols)
+  mech diagnose     → Diagnóstico del sistema (9 checks)
+  mech version      → Versión + plataforma
+  mech kill         → Terminar sesión tmux
   mech --help       → ayuda completa en formato tecno-sacerdotal
 
-  
+HOOKS (mechcode_hook.py):
+Registrar en ~/.claude/settings.json para estos eventos:
+  PreToolUse, PostToolUse, PostToolUseFailure,
+  SubagentStart, SubagentStop, SessionStart, Stop
 
-MOTOR DE SUSTITUCIÓN (orden estricto):
-1. Detectar tipo de línea: error / success / thinking / warning / info / code
-2. Aplicar sustitución ES + EN de tabla CONTEXT.md sección VII
-3. Aplicar color ANSI según tipo y tema activo (paleta CONTEXT.md sección IX)
-4. Añadir prefijo [TIPO//] + símbolo canónico
-5. Mostrar frame de servo-cráneo apropiado si modo lo requiere
+Cada hook lee stdin (JSON), actualiza ~/.mechcode_state.json con:
+  main_state (IDLE/THINKING/SUCCESS/ERROR), tool, tool_detail,
+  message_es, message_en, agents dict, stats dict
 
-CONFIG: ~/.mechcode_config.json con mode, theme, ascii_enabled,
-        heresies_detected, rites_completed, session_start.
+MONITOR (servoskull_monitor.py):
+Loop infinito que lee estado y renderiza:
+  Header gótico catedral, skull animado, separadores,
+  estado actual, binhárico dinámico, jerarquía de agentes,
+  estadísticas, footer con letanía rotativa
 
-MODOS: full (default), quiet, ascii, stealth, off.
-El modo `off` debe ser INDISTINGUIBLE del claude nativo.
-Latencia máxima añadida al pipeline: 50ms.
-Python 3.8+, sin dependencias externas obligatorias (rich: opcional).
+CONFIG: ~/.mechcode_config.json con mode, theme, language, sidebar_width.
+SHARED: shared_config.py con constantes compartidas entre todos los módulos.
+
+MODOS: full (default), off.
+El modo `off` = passthrough directo a claude, sin tmux.
+Python 3.8+, sin dependencias externas.
 
 NO pases a Fase 4 sin mi confirmación.
 
@@ -105,50 +117,41 @@ FASE 4 — INSTALACIÓN, LICENCIA Y DOCS
 Crea los siguientes ficheros:
 
 **install.sh:**
-- Detectar shell automáticamente (bash/zsh/fish)
-- Verificar que `claude` está instalado — si no, abortar con mensaje
-  tecno-sacerdotal e instrucciones: "npm install -g @anthropic-ai/claude-code"
-- Si existe ~/.claude/CLAUDE.md previo: hacer backup automático a
-  ~/.claude/CLAUDE.md.backup.{timestamp} y pedir confirmación antes de continuar
-- Instalar mechcode.py en PATH (~/.local/bin/mechcode, chmod +x)
-- Crear ~/.claude/ si no existe
+- Detectar SO (Linux, WSL2, macOS) y shell (bash/zsh/fish)
+- Verificar requisitos: claude, python 3.8+, tmux
+- Si existe ~/.claude/CLAUDE.md previo: backup automático
+- Instalar scripts en ~/.local/bin/ (mechcode.py, servoskull.py,
+  servoskull_monitor.py, mechcode_hook.py, shared_config.py)
 - Copiar config/CLAUDE.md a ~/.claude/CLAUDE.md
+- Registrar hooks en ~/.claude/settings.json
 - Añadir alias `mech` y autocompletado al rc correspondiente
-- Mostrar el disclaimer de GW en pantalla durante la instalación
-- Al completar: servo-cráneo frame SUCCESS + litanía:
-  "⚙ El Rito de Iniciación ha concluido. La Forja está activa.
-   Que el Omnissiah guíe tus algoritmos, Magos. ‡"
+- Post-install validation (9 checks)
 
-**LICENSE:**
-Licencia MIT estándar. Año actual. Autor: [TU_NOMBRE].
+**uninstall.sh:**
+- Eliminar scripts de ~/.local/bin/
+- Restaurar CLAUDE.md desde backup
+- Limpiar hooks de settings.json
+- Limpiar alias y completions del shell
 
-**README.md** — estructura obligatoria en este orden:
-1. Banner ASCII del Mechanicus (ancho 80)
-2. One-liner de instalación curl prominente arriba:
-   `curl -sSL https://raw.githubusercontent.com/TU_USUARIO/mechanicus-terminal/main/install.sh | bash`
-3. Sección "Requisitos previos" (claude code, python 3.8+, cuenta Anthropic)
-4. Tabla de comandos rápidos `mech <cmd>`
-5. Tabla de modos de operación con descripción
-6. Sección "Contribuir" — PRs bienvenidos, instrucciones básicas
-7. Sección "Licencia" — MIT
-8. Sección "Disclaimer" al final (texto exacto):
-This is an unofficial fan project created for personal and educational use.
-Warhammer 40,000, Adeptus Mechanicus, and all related names, terms, characters,
-and lore are trademarks and/or copyright of Games Workshop Limited and are used
-here without permission. This project is not affiliated with, endorsed by, or
-connected to Games Workshop in any way. No commercial use is intended or permitted.
-For the Omnissiah.
-9. Pie de página: "Forjado en el nombre del Omnissiah. Mars Forge Prime. M41."
+**LICENSE:** MIT
+
+**README.md + README.es.md:**
+- Banner ASCII, instalación, requisitos, tabla de comandos completa
+- Sección "Cómo Funciona" con diagrama y tabla de componentes
+- Documentación de hooks
+- Sección de troubleshooting
+- Compatibilidad de plataformas
+- Disclaimer de GW
 
 ═══ RESTRICCIONES GLOBALES ═══
 
-- Todo texto de UI/Readme/Instalador etc debe ser bilingüe EN/ES (INGLES siempre primero)
+- Todo texto de UI/Readme/Instalador bilingüe EN/ES
 - Caracteres sagrados ⚙ ☿ ψ Ω ‡ † ☠ ✠ presentes en mensajes de sistema
 - NUNCA modificar el código real que Claude produce — solo mensajes de interfaz
-- El modo off = indistinguible del claude nativo
+- El modo off = passthrough directo a claude
 - Los comandos rápidos `mech <cmd>` son la feature más crítica
-- Python 3.8+ sin dependencias externas obligatorias
-- install.sh NUNCA sobreescribe ~/.claude/CLAUDE.md sin backup y confirmación
+- Python 3.8+ sin dependencias externas
+- install.sh NUNCA sobreescribe ~/.claude/CLAUDE.md sin backup
 - El disclaimer de GW aparece en install.sh Y en README.md
 
 Empieza por FASE 1. Detente y espera confirmación antes de cada fase siguiente.

@@ -8,7 +8,7 @@ import json
 import math
 import os
 import random
-import string
+import re
 import sys
 import time
 from pathlib import Path
@@ -21,44 +21,13 @@ from servoskull import (
     get_frame, RESET, BOLD, DIM, GREY_COGIT, GOLD_OMNI,
     GREEN_BIONIC, RED_MARS, ORANGE_FORGE, BONE_SACRED,
 )
-
-STATE_FILE = Path.home() / ".mechcode_state.json"
-CONFIG_FILE = Path.home() / ".mechcode_config.json"
-
-
-def detect_language():
-    """Detect active language from config or system locale."""
-    try:
-        if CONFIG_FILE.exists():
-            cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-            lang = cfg.get("language")
-            if lang and lang != "auto":
-                return lang
-    except (json.JSONDecodeError, OSError):
-        pass
-    for var in ("LANG", "LC_ALL", "LANGUAGE", "LC_MESSAGES"):
-        val = os.environ.get(var, "")
-        if val.lower().startswith("es"):
-            return "es"
-    return "en"
-
-
-# Animation timing constants
-THINKING_INTERVAL = 0.15   # faster tick for smooth animation
-IDLE_INTERVAL = 0.12       # breathing tick
-ERROR_INTERVAL = 0.18      # error flicker tick
-DEFAULT_INTERVAL = 0.5     # fallback for SUCCESS and other states
-
-# Breathing sine wave parameters
-BREATH_SPEED = 0.08        # radians per tick
-BREATH_MIN = 0.65          # minimum intensity
-BREATH_MAX = 1.0           # maximum intensity
-
-# Thinking smooth phase speed
-THINKING_PHASE_SPEED = 0.05  # radians per tick
-
-# Error flicker cycle
-ERROR_FRAME_TICKS = 4      # ticks per error frame
+from shared_config import (
+    STATE_FILE, CONFIG_FILE,
+    THINKING_INTERVAL, IDLE_INTERVAL, ERROR_INTERVAL, DEFAULT_INTERVAL,
+    BREATH_SPEED, BREATH_MIN, BREATH_MAX,
+    THINKING_PHASE_SPEED, ERROR_FRAME_TICKS,
+    get_active_language, get_agent_icon,
+)
 
 # Binharic fragments for background static
 BINHARIC_FRAGMENTS = [
@@ -164,13 +133,7 @@ MONITOR_I18N = {
     },
 }
 
-# Agent type icons (small servo-skull representations)
-AGENT_ICONS = {
-    "Explore":    "\u03c8",  # psi
-    "Plan":       "\u2021",  # double dagger
-    "general-purpose": "\u2620",  # skull
-    "claude-code-guide": "\u2638",  # wheel
-}
+# Agent icons now come from shared_config.get_agent_icon()
 
 # Color codes for states
 STATE_COLORS = {
@@ -211,7 +174,6 @@ def truncate(text, width):
 
 def center(text, width):
     """Center text within width (approximate, ignoring ANSI)."""
-    import re
     clean = re.sub(r'\033\[[^m]*m', '', text)
     pad = max(0, (width - len(clean)) // 2)
     return " " * pad + text
@@ -219,7 +181,6 @@ def center(text, width):
 
 def visible_len(text):
     """Get visible length of text, ignoring ANSI escape codes."""
-    import re
     return len(re.sub(r'\033\[[^m]*m', '', text))
 
 
@@ -285,12 +246,11 @@ def draw_header(w, lang="en"):
 
 
 def draw_frame_sides(content_line, w):
-    """Wrap a content line with gothic frame side walls ║."""
-    import re
+    """Wrap a content line with gothic frame side walls."""
     clean = re.sub(r'\033\[[^m]*m', '', content_line)
     inner = w - 2
     pad = max(0, inner - len(clean))
-    return f"{GOLD_OMNI}║{RESET}{content_line}{' ' * pad}{GOLD_OMNI}║{RESET}"
+    return f"{GOLD_OMNI}\u2551{RESET}{content_line}{' ' * pad}{GOLD_OMNI}\u2551{RESET}"
 
 
 def draw_section_separator(w, style="cog"):
@@ -435,7 +395,7 @@ def draw_agents(state_data, w, lang="en"):
 
     for agent_id, info in list(agents.items())[:5]:
         atype = info.get("type", "unknown")
-        icon = AGENT_ICONS.get(atype, "\u2020")
+        icon = get_agent_icon(atype)
         name = info.get(name_key) or info.get("name_en", atype.upper())
         elapsed = time.time() - info.get("started", time.time())
         time_str = format_uptime(elapsed)
@@ -531,9 +491,20 @@ def show_cursor():
     sys.stdout.flush()
 
 
+def _detect_language():
+    """Detect language from config file or system locale via shared_config."""
+    try:
+        if CONFIG_FILE.exists():
+            cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            return get_active_language(cfg)
+    except (json.JSONDecodeError, OSError):
+        pass
+    return get_active_language()
+
+
 def main():
     hide_cursor()
-    lang = detect_language()
+    lang = _detect_language()
     litany_timer = time.time()
     litany_pool = LITANIES.get(lang, LITANIES["en"])
     current_litany = random.choice(litany_pool)
@@ -547,123 +518,128 @@ def main():
 
     try:
         while True:
-            w, h = get_terminal_size()
-            state_data = load_state()
+            try:
+                w, h = get_terminal_size()
+                state_data = load_state()
 
-            main_state = "IDLE"
-            if state_data:
-                main_state = state_data.get("main_state", "IDLE")
+                main_state = "IDLE"
+                if state_data:
+                    main_state = state_data.get("main_state", "IDLE")
 
-            # Auto-decay: if state is SUCCESS/ERROR and >3 seconds old, go IDLE
-            if state_data and main_state in ("SUCCESS", "ERROR"):
-                ts = state_data.get("timestamp", 0)
-                if time.time() - ts > 3.0:
-                    main_state = "IDLE"
+                # Auto-decay: if state is SUCCESS/ERROR and >3 seconds old, go IDLE
+                if state_data and main_state in ("SUCCESS", "ERROR"):
+                    ts = state_data.get("timestamp", 0)
+                    if time.time() - ts > 3.0:
+                        main_state = "IDLE"
 
-            # Reset animation counters on state transition
-            if main_state != last_main_state:
+                # Reset animation counters on state transition
+                if main_state != last_main_state:
+                    if main_state == "IDLE":
+                        breath_angle = 0.0
+                    elif main_state == "THINKING":
+                        thinking_angle = 0.0
+                    elif main_state == "ERROR":
+                        error_tick = 0
+                    last_main_state = main_state
+
+                # Compute animation parameters per state
+                intensity = 1.0
+                error_frame = 0
+                thinking_phase = None
+
                 if main_state == "IDLE":
-                    breath_angle = 0.0
+                    breath_val = math.sin(breath_angle) * 0.5 + 0.5
+                    intensity = BREATH_MIN + breath_val * (BREATH_MAX - BREATH_MIN)
+                    breath_angle += BREATH_SPEED
+                    skull_state = "IDLE"
+
                 elif main_state == "THINKING":
-                    thinking_angle = 0.0
+                    thinking_phase = (math.sin(thinking_angle) * 0.5 + 0.5)
+                    thinking_angle += THINKING_PHASE_SPEED
+                    skull_state = "THINKING"
+
                 elif main_state == "ERROR":
-                    error_tick = 0
-                last_main_state = main_state
+                    error_frame = (error_tick // ERROR_FRAME_TICKS) % 4
+                    error_tick += 1
+                    skull_state = "ERROR"
 
-            # Compute animation parameters per state
-            intensity = 1.0
-            error_frame = 0
-            thinking_phase = None
+                elif main_state == "SUCCESS":
+                    skull_state = "SUCCESS"
 
-            if main_state == "IDLE":
-                # Breathing effect: sine wave cycling intensity 0.65..1.0
-                breath_val = math.sin(breath_angle) * 0.5 + 0.5  # 0..1
-                intensity = BREATH_MIN + breath_val * (BREATH_MAX - BREATH_MIN)
-                breath_angle += BREATH_SPEED
-                skull_state = "IDLE"
+                else:
+                    skull_state = "IDLE"
 
-            elif main_state == "THINKING":
-                # Smooth thinking phase: continuous sine cycle 0..1
-                thinking_phase = (math.sin(thinking_angle) * 0.5 + 0.5)
-                thinking_angle += THINKING_PHASE_SPEED
-                skull_state = "THINKING"
+                # Generate skull frame with animation params
+                last_skull = get_frame(
+                    skull_state, compact=True,
+                    intensity=intensity,
+                    error_frame=error_frame,
+                    thinking_phase=thinking_phase,
+                )
 
-            elif main_state == "ERROR":
-                # Flickering error: cycle through frames 0-3
-                error_frame = (error_tick // ERROR_FRAME_TICKS) % 4
-                error_tick += 1
-                skull_state = "ERROR"
+                # Rotate litany every 30s
+                if time.time() - litany_timer > 30:
+                    current_litany = random.choice(litany_pool)
+                    litany_timer = time.time()
 
-            elif main_state == "SUCCESS":
-                skull_state = "SUCCESS"
+                cycle_count += 1
 
-            else:
-                skull_state = "IDLE"
+                # Build full display with gothic cathedral frame
+                output_parts = []
+                output_parts.append(draw_header(w, lang))
 
-            # Generate skull frame with animation params
-            last_skull = get_frame(
-                skull_state, compact=True,
-                intensity=intensity,
-                error_frame=error_frame,
-                thinking_phase=thinking_phase,
-            )
+                # Skull section
+                if last_skull:
+                    for skull_line in last_skull.split("\n"):
+                        output_parts.append(draw_frame_sides(skull_line, w))
+                else:
+                    output_parts.append(draw_frame_sides("", w))
 
-            # Rotate litany every 30s
-            if time.time() - litany_timer > 30:
-                current_litany = random.choice(litany_pool)
-                litany_timer = time.time()
+                output_parts.append(draw_section_separator(w, "heavy"))
+                output_parts.append(draw_status(state_data, w, lang))
+                output_parts.append(draw_binharic(w, cycle_count))
 
-            cycle_count += 1
+                agents_section = draw_agents(state_data, w, lang)
+                if agents_section:
+                    output_parts.append(agents_section)
 
-            # Build full display with gothic cathedral frame
-            output_parts = []
-            output_parts.append(draw_header(w, lang))
-
-            # Skull section — wrap each line in frame sides
-            if last_skull:
-                for skull_line in last_skull.split("\n"):
-                    output_parts.append(draw_frame_sides(skull_line, w))
-            else:
+                output_parts.append(draw_stats(state_data, w, lang))
                 output_parts.append(draw_frame_sides("", w))
+                output_parts.append(draw_footer(w, current_litany, lang))
 
-            # Separator between skull and status
-            output_parts.append(draw_section_separator(w, "heavy"))
+                # Clear and draw
+                clear_screen()
+                full_output = "\n".join(output_parts)
+                sys.stdout.write(full_output)
+                sys.stdout.flush()
 
-            output_parts.append(draw_status(state_data, w, lang))
-            output_parts.append(draw_binharic(w, cycle_count))
+                # Sleep interval depends on state
+                if main_state == "THINKING":
+                    time.sleep(THINKING_INTERVAL)
+                elif main_state == "IDLE":
+                    time.sleep(IDLE_INTERVAL)
+                elif main_state == "ERROR":
+                    time.sleep(ERROR_INTERVAL)
+                else:
+                    time.sleep(DEFAULT_INTERVAL)
 
-            agents_section = draw_agents(state_data, w, lang)
-            if agents_section:
-                output_parts.append(agents_section)
-
-            output_parts.append(draw_stats(state_data, w, lang))
-
-            # Empty framed line before footer
-            output_parts.append(draw_frame_sides("", w))
-
-            output_parts.append(draw_footer(w, current_litany, lang))
-
-            # Clear and draw
-            clear_screen()
-            full_output = "\n".join(output_parts)
-            sys.stdout.write(full_output)
-            sys.stdout.flush()
-
-            # Sleep interval depends on state — faster for animated states
-            if main_state == "THINKING":
-                time.sleep(THINKING_INTERVAL)
-            elif main_state == "IDLE":
-                time.sleep(IDLE_INTERVAL)
-            elif main_state == "ERROR":
-                time.sleep(ERROR_INTERVAL)
-            else:
-                time.sleep(DEFAULT_INTERVAL)
+            except (IOError, OSError) as e:
+                # stdout broken (tmux detached) or state file I/O error
+                print(f"[servoskull_monitor] I/O error: {e}", file=sys.stderr)
+                time.sleep(1)
+            except Exception as e:
+                # Catch unexpected errors to prevent silent death
+                print(f"[servoskull_monitor] Unexpected error: {e}", file=sys.stderr)
+                time.sleep(1)
 
     except KeyboardInterrupt:
         pass
     finally:
-        show_cursor()
-        clear_screen()
+        try:
+            show_cursor()
+            clear_screen()
+        except (IOError, OSError):
+            pass
 
 
 if __name__ == "__main__":

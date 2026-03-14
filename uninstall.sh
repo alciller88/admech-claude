@@ -60,7 +60,7 @@ kill_tmux_session() {
 }
 
 remove_mechcode() {
-    for f in mechcode mechcode.py servoskull.py servoskull_monitor.py mechcode_hook.py; do
+    for f in mechcode mechcode.py servoskull.py servoskull_monitor.py mechcode_hook.py shared_config.py; do
         local fp="${INSTALL_DIR}/${f}"
         if [[ -f "$fp" ]]; then
             rm -f "$fp"
