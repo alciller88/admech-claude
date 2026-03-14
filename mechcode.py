@@ -12,6 +12,7 @@ Python 3.8+ — no external dependencies.
 
 import json
 import os
+import platform
 import random
 import shutil
 import subprocess
@@ -19,6 +20,9 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+# === VERSION ===
+VERSION = "1.0.0-beta"
 
 # === PATHS ===
 CONFIG_PATH = Path.home() / ".mechcode_config.json"
@@ -67,22 +71,66 @@ I18N = {
         "help_footer_1": "All other args are passed to claude in a tmux session",
         "help_footer_2": "with an animated servo-skull sidebar monitor.",
         "help_cmds": [
-            ("mech on|enable",    "Activate Mechanicus mode"),
-            ("mech off|disable",  "Deactivate \u2014 native claude output"),
-            ("mech status",       "Show config + stats"),
-            ("mech theme <name>", "Switch palette (rojo/verde/hueso/golden)"),
-            ("mech lore",         "Random canonical litany"),
-            ("mech esp",          "Language: Spanish"),
-            ("mech eng",          "Language: English"),
-            ("mech sidebar <N>",  "Set sidebar width (20-60 cols)"),
-            ("mech kill",         "Kill tmux session"),
-            ("mech --help",       "This codex"),
+            ("mech on|enable",          "Activate Mechanicus mode",       "mech on"),
+            ("mech off|disable",        "Deactivate \u2014 native claude output",  "mech off"),
+            ("mech status",             "Show config + stats",            "mech status"),
+            ("mech theme <name>",       "Switch palette",                 "mech theme verde"),
+            ("mech lore",               "Random canonical litany",        "mech lore"),
+            ("mech esp | eng",          "Switch language",                "mech esp"),
+            ("mech sidebar <N>",        "Set sidebar width (20-60)",      "mech sidebar 40"),
+            ("mech diagnose",           "Run system diagnostics",         "mech diagnose"),
+            ("mech version",            "Show version",                   "mech version"),
+            ("mech kill",               "Kill tmux session",              "mech kill"),
+            ("mech --help",             "This codex",                     "mech --help"),
+        ],
+        "help_quickstart_header": "QUICK START",
+        "help_quickstart": [
+            "1. mech on          \u2192 Enable Mechanicus mode",
+            "2. mech <prompt>    \u2192 Launch claude with servo-skull sidebar",
+            "3. mech diagnose    \u2192 Check system readiness",
         ],
         "claude_not_found": "HERESY \u2014 Claude Code not found in PATH",
         "claude_install": "Install: npm install -g @anthropic-ai/claude-code",
         "tmux_required": "tmux is required for Mechanicus Terminal",
         "tmux_install": "Install: sudo apt install tmux  /  brew install tmux",
         "status_header": "\u2550\u2550\u2550\u2699\u2550\u2550\u2550 MECHANICUS STATUS \u2550\u2550\u2550\u2699\u2550\u2550\u2550",
+        "version_label": "Mechanicus Terminal",
+        # Diagnose strings
+        "diag_header": "\u2550\u2550\u2550\u2699 SYSTEM DIAGNOSTICS \u2014 AUSPEX SCAN \u2699\u2550\u2550\u2550",
+        "diag_footer": "\u2550\u2550\u2550\u2699 SCAN COMPLETE \u2699\u2550\u2550\u2550",
+        "diag_python_ver": "Python version",
+        "diag_python_ok": "Python {ver} (3.8+ required)",
+        "diag_python_fail": "Python {ver} is below 3.8. Upgrade your Python installation.",
+        "diag_tmux": "tmux installed",
+        "diag_tmux_ok": "tmux {ver}",
+        "diag_tmux_fail": "tmux not found. Install: sudo apt install tmux / brew install tmux",
+        "diag_claude": "claude command",
+        "diag_claude_ok": "Found at {path}",
+        "diag_claude_fail": "Not found. Install: npm install -g @anthropic-ai/claude-code",
+        "diag_hooks": "Claude hooks configured",
+        "diag_hooks_ok": "mechcode_hook.py registered in settings.json",
+        "diag_hooks_fail": "Hooks not configured. Run: install.sh",
+        "diag_hooks_no_file": "~/.claude/settings.json not found. Run: install.sh",
+        "diag_state": "State file (~/.mechcode_state.json)",
+        "diag_state_ok": "Valid JSON, last updated {age}s ago",
+        "diag_state_missing": "Not found (created on first session launch)",
+        "diag_state_invalid": "Contains invalid JSON. Delete and relaunch: rm ~/.mechcode_state.json",
+        "diag_config": "Config file (~/.mechcode_config.json)",
+        "diag_config_ok": "Valid JSON",
+        "diag_config_missing": "Not found (defaults will be used)",
+        "diag_config_invalid": "Contains invalid JSON. Delete to reset: rm ~/.mechcode_config.json",
+        "diag_scripts": "Scripts in ~/.local/bin",
+        "diag_scripts_ok": "All {n} scripts found",
+        "diag_scripts_fail": "Missing: {missing}. Run: install.sh",
+        "diag_session": "tmux session '{name}'",
+        "diag_session_ok": "Running",
+        "diag_session_warn": "Not running (will start on next launch)",
+        "diag_path": "~/.local/bin in PATH",
+        "diag_path_ok": "PATH includes ~/.local/bin",
+        "diag_path_fail": "~/.local/bin not in PATH. Add to your shell profile: export PATH=\"$HOME/.local/bin:$PATH\"",
+        "diag_summary_ok": "All systems operational. The Machine Spirit is pleased.",
+        "diag_summary_warn": "{n} warning(s) detected. Non-critical, but review recommended.",
+        "diag_summary_fail": "{n} failure(s) detected. Purge required before operation.",
     },
     "es": {
         "forge_activated": "\u2699 FORJA ACTIVADA \u2699",
@@ -99,22 +147,66 @@ I18N = {
         "help_footer_1": "El resto de args se pasan a claude en una sesi\u00f3n tmux",
         "help_footer_2": "con un monitor de servo-cr\u00e1neo animado.",
         "help_cmds": [
-            ("mech on|enable",    "Activar modo Mechanicus"),
-            ("mech off|disable",  "Desactivar \u2014 output nativo de claude"),
-            ("mech status",       "Config y estad\u00edsticas"),
-            ("mech theme <name>", "Cambiar paleta (rojo/verde/hueso/golden)"),
-            ("mech lore",         "Letan\u00eda can\u00f3nica aleatoria"),
-            ("mech esp",          "Idioma: Espa\u00f1ol"),
-            ("mech eng",          "Idioma: Ingl\u00e9s"),
-            ("mech sidebar <N>",  "Ancho del sidebar (20-60 cols)"),
-            ("mech kill",         "Terminar sesi\u00f3n tmux"),
-            ("mech --help",       "Este c\u00f3dex"),
+            ("mech on|enable",          "Activar modo Mechanicus",        "mech on"),
+            ("mech off|disable",        "Desactivar \u2014 output nativo de claude", "mech off"),
+            ("mech status",             "Config y estad\u00edsticas",            "mech status"),
+            ("mech theme <name>",       "Cambiar paleta",                 "mech theme verde"),
+            ("mech lore",               "Letan\u00eda can\u00f3nica aleatoria",       "mech lore"),
+            ("mech esp | eng",          "Cambiar idioma",                 "mech esp"),
+            ("mech sidebar <N>",        "Ancho del sidebar (20-60)",      "mech sidebar 40"),
+            ("mech diagnostico",        "Diagn\u00f3stico del sistema",         "mech diagnostico"),
+            ("mech version",            "Mostrar versi\u00f3n",                 "mech version"),
+            ("mech kill",               "Terminar sesi\u00f3n tmux",            "mech kill"),
+            ("mech --help",             "Este c\u00f3dex",                      "mech --help"),
+        ],
+        "help_quickstart_header": "INICIO R\u00c1PIDO",
+        "help_quickstart": [
+            "1. mech on          \u2192 Activar modo Mechanicus",
+            "2. mech <prompt>    \u2192 Lanzar claude con sidebar servo-cr\u00e1neo",
+            "3. mech diagnostico \u2192 Verificar estado del sistema",
         ],
         "claude_not_found": "HEREJ\u00cdA \u2014 Claude Code no encontrado en PATH",
         "claude_install": "Instalar: npm install -g @anthropic-ai/claude-code",
         "tmux_required": "tmux es necesario para Mechanicus Terminal",
         "tmux_install": "Instalar: sudo apt install tmux  /  brew install tmux",
         "status_header": "\u2550\u2550\u2550\u2699\u2550\u2550\u2550 ESTADO MECHANICUS \u2550\u2550\u2550\u2699\u2550\u2550\u2550",
+        "version_label": "Mechanicus Terminal",
+        # Diagnose strings
+        "diag_header": "\u2550\u2550\u2550\u2699 DIAGN\u00d3STICO DEL SISTEMA \u2014 ESCANEO AUSPEX \u2699\u2550\u2550\u2550",
+        "diag_footer": "\u2550\u2550\u2550\u2699 ESCANEO COMPLETO \u2699\u2550\u2550\u2550",
+        "diag_python_ver": "Versi\u00f3n de Python",
+        "diag_python_ok": "Python {ver} (se requiere 3.8+)",
+        "diag_python_fail": "Python {ver} es inferior a 3.8. Actualice su instalaci\u00f3n de Python.",
+        "diag_tmux": "tmux instalado",
+        "diag_tmux_ok": "tmux {ver}",
+        "diag_tmux_fail": "tmux no encontrado. Instalar: sudo apt install tmux / brew install tmux",
+        "diag_claude": "Comando claude",
+        "diag_claude_ok": "Encontrado en {path}",
+        "diag_claude_fail": "No encontrado. Instalar: npm install -g @anthropic-ai/claude-code",
+        "diag_hooks": "Hooks de Claude configurados",
+        "diag_hooks_ok": "mechcode_hook.py registrado en settings.json",
+        "diag_hooks_fail": "Hooks no configurados. Ejecutar: install.sh",
+        "diag_hooks_no_file": "~/.claude/settings.json no encontrado. Ejecutar: install.sh",
+        "diag_state": "Archivo de estado (~/.mechcode_state.json)",
+        "diag_state_ok": "JSON v\u00e1lido, \u00faltima actualizaci\u00f3n hace {age}s",
+        "diag_state_missing": "No encontrado (se crea al iniciar la primera sesi\u00f3n)",
+        "diag_state_invalid": "JSON inv\u00e1lido. Eliminar y relanzar: rm ~/.mechcode_state.json",
+        "diag_config": "Archivo de config (~/.mechcode_config.json)",
+        "diag_config_ok": "JSON v\u00e1lido",
+        "diag_config_missing": "No encontrado (se usar\u00e1n valores por defecto)",
+        "diag_config_invalid": "JSON inv\u00e1lido. Eliminar para reiniciar: rm ~/.mechcode_config.json",
+        "diag_scripts": "Scripts en ~/.local/bin",
+        "diag_scripts_ok": "Los {n} scripts encontrados",
+        "diag_scripts_fail": "Faltan: {missing}. Ejecutar: install.sh",
+        "diag_session": "Sesi\u00f3n tmux '{name}'",
+        "diag_session_ok": "En ejecuci\u00f3n",
+        "diag_session_warn": "No activa (se iniciar\u00e1 en el pr\u00f3ximo lanzamiento)",
+        "diag_path": "~/.local/bin en PATH",
+        "diag_path_ok": "PATH incluye ~/.local/bin",
+        "diag_path_fail": "~/.local/bin no est\u00e1 en PATH. A\u00f1adir al perfil del shell: export PATH=\"$HOME/.local/bin:$PATH\"",
+        "diag_summary_ok": "Todos los sistemas operativos. El Esp\u00edritu de M\u00e1quina est\u00e1 complacido.",
+        "diag_summary_warn": "{n} advertencia(s) detectada(s). No cr\u00edtico, pero se recomienda revisar.",
+        "diag_summary_fail": "{n} fallo(s) detectado(s). Purga necesaria antes de operar.",
     },
 }
 
@@ -437,14 +529,30 @@ def cmd_kill(_cfg):
     else:
         print(t["no_session"])
 
+def cmd_version(cfg):
+    theme = get_theme(cfg)
+    t = I18N[get_lang(cfg)]
+    g, i, d, r = theme["gold"], theme["info"], theme["dim"], theme["reset"]
+    print(f"{g}\u2699 {t['version_label']} v{VERSION} \u2699{r}")
+    print(f"{i}  Python:   {d}{platform.python_version()}{r}")
+    print(f"{i}  Platform: {d}{platform.system()} {platform.machine()}{r}")
+
 def cmd_help(cfg):
     theme = get_theme(cfg)
     t = I18N[get_lang(cfg)]
-    g, i, d, w, r = theme["gold"], theme["info"], theme["dim"], theme["warning"], theme["reset"]
+    g, i, d, w, s, r = (theme["gold"], theme["info"], theme["dim"],
+                         theme["warning"], theme["success"], theme["reset"])
     print(f"{g}{t['help_header']}{r}")
     print()
-    for cmd, desc in t["help_cmds"]:
-        print(f"{i}  {cmd:<22}{d}\u2192{i} {desc}{r}")
+    # Quick start section
+    print(f"  {g}\u250c\u2500 {t['help_quickstart_header']} \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500{r}")
+    for line in t["help_quickstart"]:
+        print(f"  {g}\u2502{r} {s}{line}{r}")
+    print(f"  {g}\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500{r}")
+    print()
+    for cmd, desc, example in t["help_cmds"]:
+        print(f"{i}  {cmd:<24}{d}\u2192{i} {desc}")
+        print(f"{d}{'':>26}ex: {example}{r}")
     print()
     print(f"{w}  {t['help_footer_1']}{r}")
     print(f"{w}  {t['help_footer_2']}{r}")
@@ -453,21 +561,181 @@ def cmd_help(cfg):
     print(f"{g}\u2550\u2550\u2550\u2699 LAUS OMNISSIAH \u2699\u2550\u2550\u2550{r}")
 
 
+def cmd_diagnose(cfg):
+    """Run comprehensive system diagnostics."""
+    theme = get_theme(cfg)
+    t = I18N[get_lang(cfg)]
+    g, i, d, r = theme["gold"], theme["info"], theme["dim"], theme["reset"]
+    sc = theme["success"]
+    er = theme["error"]
+    wr = theme["warning"]
+
+    # Symbols
+    SYM_OK = f"{sc}\u2713{r}"
+    SYM_FAIL = f"{er}\u2717{r}"
+    SYM_WARN = f"{wr}\u2020{r}"
+
+    failures = 0
+    warnings = 0
+
+    def print_check(symbol, label, detail):
+        print(f"  {symbol} {i}{label:<38}{d}{detail}{r}")
+
+    print(f"{g}{t['diag_header']}{r}")
+    print()
+
+    # 1. Python version
+    pyver = platform.python_version()
+    pymajor, pyminor = sys.version_info[:2]
+    if pymajor >= 3 and pyminor >= 8:
+        print_check(SYM_OK, t["diag_python_ver"],
+                    t["diag_python_ok"].format(ver=pyver))
+    else:
+        print_check(SYM_FAIL, t["diag_python_ver"],
+                    t["diag_python_fail"].format(ver=pyver))
+        failures += 1
+
+    # 2. tmux installed + version
+    tmux_path = shutil.which("tmux")
+    if tmux_path:
+        try:
+            result = subprocess.run(["tmux", "-V"], capture_output=True, text=True)
+            tmux_ver = result.stdout.strip()
+        except OSError:
+            tmux_ver = "unknown"
+        print_check(SYM_OK, t["diag_tmux"],
+                    t["diag_tmux_ok"].format(ver=tmux_ver))
+    else:
+        print_check(SYM_FAIL, t["diag_tmux"], t["diag_tmux_fail"])
+        failures += 1
+
+    # 3. claude command
+    claude_path = find_claude()
+    if claude_path:
+        print_check(SYM_OK, t["diag_claude"],
+                    t["diag_claude_ok"].format(path=claude_path))
+    else:
+        print_check(SYM_FAIL, t["diag_claude"], t["diag_claude_fail"])
+        failures += 1
+
+    # 4. Claude hooks in settings.json
+    settings_path = Path.home() / ".claude" / "settings.json"
+    if settings_path.exists():
+        try:
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+            hooks = settings.get("hooks", {})
+            hook_str = json.dumps(hooks)
+            if "mechcode_hook" in hook_str:
+                print_check(SYM_OK, t["diag_hooks"], t["diag_hooks_ok"])
+            else:
+                print_check(SYM_FAIL, t["diag_hooks"], t["diag_hooks_fail"])
+                failures += 1
+        except (json.JSONDecodeError, OSError):
+            print_check(SYM_FAIL, t["diag_hooks"], t["diag_hooks_fail"])
+            failures += 1
+    else:
+        print_check(SYM_FAIL, t["diag_hooks"], t["diag_hooks_no_file"])
+        failures += 1
+
+    # 5. State file
+    if STATE_FILE.exists():
+        try:
+            state_data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            ts = state_data.get("timestamp", 0)
+            age = int(time.time() - ts) if ts else "?"
+            print_check(SYM_OK, t["diag_state"],
+                        t["diag_state_ok"].format(age=age))
+        except json.JSONDecodeError:
+            print_check(SYM_FAIL, t["diag_state"], t["diag_state_invalid"])
+            failures += 1
+    else:
+        print_check(SYM_WARN, t["diag_state"], t["diag_state_missing"])
+        warnings += 1
+
+    # 6. Config file
+    if CONFIG_PATH.exists():
+        try:
+            json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            print_check(SYM_OK, t["diag_config"], t["diag_config_ok"])
+        except json.JSONDecodeError:
+            print_check(SYM_FAIL, t["diag_config"], t["diag_config_invalid"])
+            failures += 1
+    else:
+        print_check(SYM_WARN, t["diag_config"], t["diag_config_missing"])
+        warnings += 1
+
+    # 7. Scripts in ~/.local/bin
+    local_bin = Path.home() / ".local" / "bin"
+    expected_scripts = [
+        "mechcode.py", "servoskull.py", "servoskull_monitor.py", "mechcode_hook.py"
+    ]
+    missing_scripts = [s for s in expected_scripts if not (local_bin / s).exists()]
+    if not missing_scripts:
+        print_check(SYM_OK, t["diag_scripts"],
+                    t["diag_scripts_ok"].format(n=len(expected_scripts)))
+    else:
+        print_check(SYM_FAIL, t["diag_scripts"],
+                    t["diag_scripts_fail"].format(missing=", ".join(missing_scripts)))
+        failures += 1
+
+    # 8. tmux session running
+    if tmux_path:
+        if tmux_session_exists():
+            print_check(SYM_OK,
+                        t["diag_session"].format(name=TMUX_SESSION),
+                        t["diag_session_ok"])
+        else:
+            print_check(SYM_WARN,
+                        t["diag_session"].format(name=TMUX_SESSION),
+                        t["diag_session_warn"])
+            warnings += 1
+    else:
+        print_check(SYM_FAIL,
+                    t["diag_session"].format(name=TMUX_SESSION),
+                    t["diag_tmux_fail"])
+        # Already counted in tmux check above
+
+    # 9. PATH includes ~/.local/bin
+    local_bin_str = str(local_bin)
+    path_dirs = os.environ.get("PATH", "").split(os.pathsep)
+    if local_bin_str in path_dirs:
+        print_check(SYM_OK, t["diag_path"], t["diag_path_ok"])
+    else:
+        print_check(SYM_FAIL, t["diag_path"], t["diag_path_fail"])
+        failures += 1
+
+    # Summary
+    print()
+    if failures == 0 and warnings == 0:
+        print(f"  {sc}{t['diag_summary_ok']}{r}")
+    elif failures == 0:
+        print(f"  {wr}{t['diag_summary_warn'].format(n=warnings)}{r}")
+    else:
+        print(f"  {er}{t['diag_summary_fail'].format(n=failures)}{r}")
+        if warnings > 0:
+            print(f"  {wr}{t['diag_summary_warn'].format(n=warnings)}{r}")
+
+    print(f"{g}{t['diag_footer']}{r}")
+
+
 MECH_COMMANDS = {
-    "on":      lambda cfg, _: cmd_on(cfg),
-    "enable":  lambda cfg, _: cmd_on(cfg),
-    "off":     lambda cfg, _: cmd_off(cfg),
-    "disable": lambda cfg, _: cmd_off(cfg),
-    "status":  lambda cfg, _: cmd_status(cfg),
-    "theme":   lambda cfg, a: cmd_theme(cfg, a[0] if a else ""),
-    "lore":    lambda cfg, _: cmd_lore(cfg),
-    "esp":     lambda cfg, _: cmd_lang(cfg, "es"),
-    "eng":     lambda cfg, _: cmd_lang(cfg, "en"),
-    "sidebar": lambda cfg, a: cmd_sidebar(cfg, a[0] if a else "32"),
-    "kill":    lambda cfg, _: cmd_kill(cfg),
-    "--help":  lambda cfg, _: cmd_help(cfg),
-    "-h":      lambda cfg, _: cmd_help(cfg),
-    "help":    lambda cfg, _: cmd_help(cfg),
+    "on":          lambda cfg, _: cmd_on(cfg),
+    "enable":      lambda cfg, _: cmd_on(cfg),
+    "off":         lambda cfg, _: cmd_off(cfg),
+    "disable":     lambda cfg, _: cmd_off(cfg),
+    "status":      lambda cfg, _: cmd_status(cfg),
+    "theme":       lambda cfg, a: cmd_theme(cfg, a[0] if a else ""),
+    "lore":        lambda cfg, _: cmd_lore(cfg),
+    "esp":         lambda cfg, _: cmd_lang(cfg, "es"),
+    "eng":         lambda cfg, _: cmd_lang(cfg, "en"),
+    "sidebar":     lambda cfg, a: cmd_sidebar(cfg, a[0] if a else "32"),
+    "kill":        lambda cfg, _: cmd_kill(cfg),
+    "diagnose":    lambda cfg, _: cmd_diagnose(cfg),
+    "diagnostico": lambda cfg, _: cmd_diagnose(cfg),
+    "version":     lambda cfg, _: cmd_version(cfg),
+    "--help":      lambda cfg, _: cmd_help(cfg),
+    "-h":          lambda cfg, _: cmd_help(cfg),
+    "help":        lambda cfg, _: cmd_help(cfg),
 }
 
 

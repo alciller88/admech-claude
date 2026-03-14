@@ -75,83 +75,6 @@ log_success() { echo -e "${GREEN}  [RITE//]  $1${RESET}"; }
 log_warning() { echo -e "${ORANGE}  [AUGUR//] $1${RESET}"; }
 log_error()   { echo -e "${RED}  [HERESY/] $1${RESET}"; }
 
-# === OS DETECTION ===
-detect_os() {
-    # Returns: debian, fedora, arch, macos, wsl-debian, wsl-fedora, wsl-arch, wsl, or unknown
-    if [[ "$(uname -s)" == "Darwin" ]]; then
-        echo "macos"
-        return
-    fi
-
-    local is_wsl="no"
-    if [[ -f /proc/version ]] && grep -qi "microsoft\|wsl" /proc/version 2>/dev/null; then
-        is_wsl="yes"
-    fi
-
-    local distro="unknown"
-    if [[ -f /etc/os-release ]]; then
-        local id=""
-        id=$(. /etc/os-release 2>/dev/null && echo "${ID:-}")
-        local id_like=""
-        id_like=$(. /etc/os-release 2>/dev/null && echo "${ID_LIKE:-}")
-        case "$id" in
-            ubuntu|debian|linuxmint|pop) distro="debian" ;;
-            fedora|rhel|centos|rocky)    distro="fedora" ;;
-            arch|manjaro|endeavouros)    distro="arch"   ;;
-            *)
-                # Fallback: check ID_LIKE
-                case "$id_like" in
-                    *debian*|*ubuntu*) distro="debian" ;;
-                    *fedora*|*rhel*)   distro="fedora" ;;
-                    *arch*)            distro="arch"   ;;
-                esac
-                ;;
-        esac
-    fi
-
-    if [[ "$is_wsl" == "yes" ]]; then
-        if [[ "$distro" != "unknown" ]]; then
-            echo "wsl-${distro}"
-        else
-            echo "wsl"
-        fi
-    else
-        echo "$distro"
-    fi
-}
-
-# Resolve the package manager family from OS (strips wsl- prefix)
-os_pkg_family() {
-    local os="$1"
-    case "$os" in
-        wsl-debian) echo "debian" ;;
-        wsl-fedora) echo "fedora" ;;
-        wsl-arch)   echo "arch"   ;;
-        wsl)        echo "debian" ;;  # assume debian-based WSL by default
-        *)          echo "$os"    ;;
-    esac
-}
-
-# Show the OS-specific install command for a given package
-suggest_install_cmd() {
-    local pkg="$1"
-    local pkg_family
-    pkg_family="$(os_pkg_family "$DETECTED_OS")"
-    case "$pkg_family" in
-        debian) echo -e "${BONE}    sudo apt install ${pkg}${RESET}" ;;
-        fedora) echo -e "${BONE}    sudo dnf install ${pkg}${RESET}" ;;
-        arch)   echo -e "${BONE}    sudo pacman -S ${pkg}${RESET}" ;;
-        macos)  echo -e "${BONE}    brew install ${pkg}${RESET}" ;;
-        *)
-            # Unknown OS — show all options
-            echo -e "${BONE}    Ubuntu/Debian: sudo apt install ${pkg}${RESET}"
-            echo -e "${BONE}    Fedora:        sudo dnf install ${pkg}${RESET}"
-            echo -e "${BONE}    Arch:          sudo pacman -S ${pkg}${RESET}"
-            echo -e "${BONE}    macOS:         brew install ${pkg}${RESET}"
-            ;;
-    esac
-}
-
 detect_shell() {
     local s
     s="$(basename "${SHELL:-bash}")"
@@ -178,25 +101,20 @@ get_rc_file() {
 
 check_claude() {
     if command -v claude &>/dev/null; then
-        local claude_ver=""
-        claude_ver=$(claude --version 2>/dev/null || echo "unknown")
         if [[ "$INST_LANG" == "es" ]]; then
-            log_success "Claude Code encontrado (${claude_ver})"
+            log_success "Claude Code encontrado"
         else
-            log_success "Claude Code found (${claude_ver})"
+            log_success "Claude Code found"
         fi
         return 0
     fi
     if [[ "$INST_LANG" == "es" ]]; then
         log_error "Claude Code no encontrado en PATH"
-        echo ""
-        echo -e "${BONE}  Instalar con:${RESET}"
     else
         log_error "Claude Code not found in PATH"
-        echo ""
-        echo -e "${BONE}  Install with:${RESET}"
     fi
-    echo -e "${BONE}    npm install -g @anthropic-ai/claude-code${RESET}"
+    echo ""
+    echo -e "${BONE}  Install: npm install -g @anthropic-ai/claude-code${RESET}"
     echo ""
     exit 1
 }
@@ -212,15 +130,9 @@ check_python() {
     if [[ -z "$py_cmd" ]]; then
         if [[ "$INST_LANG" == "es" ]]; then
             log_error "Python 3.8+ no encontrado"
-            echo ""
-            echo -e "${BONE}  Instalar con:${RESET}"
         else
             log_error "Python 3.8+ not found"
-            echo ""
-            echo -e "${BONE}  Install with:${RESET}"
         fi
-        suggest_install_cmd "python3"
-        echo ""
         exit 1
     fi
 
@@ -232,19 +144,14 @@ check_python() {
 
     if [[ "$major" -lt 3 ]] || { [[ "$major" -eq 3 ]] && [[ "$minor" -lt 8 ]]; }; then
         if [[ "$INST_LANG" == "es" ]]; then
-            log_error "Python ${version} detectado — se requiere 3.8+ (detected < required)"
+            log_error "Python ${version} detectado — se requiere 3.8+"
         else
             log_error "Python ${version} detected — 3.8+ required"
         fi
-        echo -e "${BONE}    detected: ${version}  |  required: >= 3.8${RESET}"
         exit 1
     fi
 
-    if [[ "$INST_LANG" == "es" ]]; then
-        log_success "Python ${version} (>= 3.8 requerido) — STC-compliant"
-    else
-        log_success "Python ${version} (>= 3.8 required) — STC-compliant"
-    fi
+    log_success "Python ${version} — STC-compliant"
 }
 
 check_tmux() {
@@ -267,7 +174,9 @@ check_tmux() {
         echo ""
         echo -e "${BONE}  Install tmux:${RESET}"
     fi
-    suggest_install_cmd "tmux"
+    echo -e "${BONE}    Ubuntu/Debian: sudo apt install tmux${RESET}"
+    echo -e "${BONE}    macOS:         brew install tmux${RESET}"
+    echo -e "${BONE}    Arch:          sudo pacman -S tmux${RESET}"
     echo ""
     if [[ "$INST_LANG" == "es" ]]; then
         echo -e "${ORANGE}  Continuando sin tmux — mechcode funcionara en modo basico.${RESET}"
@@ -607,193 +516,16 @@ print(get_frame('SUCCESS', compact=True))
     echo ""
 }
 
-# === POST-INSTALL VALIDATION ===
-post_install_validate() {
-    echo ""
-    echo -e "${DIM}──†──†──†──†──†──†──†──†──†──†──†──†──†──${RESET}"
-    if [[ "$INST_LANG" == "es" ]]; then
-        log_info "=== VERIFICACION POST-INSTALACION ==="
-    else
-        log_info "=== POST-INSTALL VALIDATION ==="
-    fi
-    echo ""
-
-    local checks_passed=0
-    local checks_total=5
-
-    # 1. Check that all files were copied to ~/.local/bin
-    local missing_files=""
-    local files_ok="yes"
-    for pyfile in mechcode.py servoskull.py servoskull_monitor.py mechcode_hook.py mechcode; do
-        if [[ ! -f "${INSTALL_DIR}/${pyfile}" ]]; then
-            files_ok="no"
-            if [[ -z "$missing_files" ]]; then
-                missing_files="${pyfile}"
-            else
-                missing_files="${missing_files}, ${pyfile}"
-            fi
-        fi
-    done
-    if [[ "$files_ok" == "yes" ]]; then
-        if [[ "$INST_LANG" == "es" ]]; then
-            log_success "Archivos instalados en ${INSTALL_DIR}"
-        else
-            log_success "Files installed in ${INSTALL_DIR}"
-        fi
-        checks_passed=$((checks_passed + 1))
-    else
-        if [[ "$INST_LANG" == "es" ]]; then
-            log_error "Archivos faltantes en ${INSTALL_DIR}: ${missing_files}"
-            echo -e "${BONE}    Remediar: volver a ejecutar install.sh${RESET}"
-        else
-            log_error "Missing files in ${INSTALL_DIR}: ${missing_files}"
-            echo -e "${BONE}    Remediate: re-run install.sh${RESET}"
-        fi
-    fi
-
-    # 2. Check hooks registered in settings.json (parse with Python)
-    local py_cmd="python3"
-    command -v python3 &>/dev/null || py_cmd="python"
-
-    local hooks_ok="no"
-    if [[ -f "$SETTINGS_FILE" ]]; then
-        hooks_ok=$($py_cmd -c "
-import json, sys
-try:
-    with open('${SETTINGS_FILE}') as f:
-        settings = json.load(f)
-    hooks = settings.get('hooks', {})
-    required = ['PreToolUse', 'PostToolUse', 'SessionStart', 'Stop']
-    missing = [e for e in required if e not in hooks or len(hooks[e]) == 0]
-    if not missing:
-        print('yes')
-    else:
-        print('missing:' + ','.join(missing))
-except Exception as ex:
-    print('error:' + str(ex))
-" 2>/dev/null || echo "error:python-failed")
-    else
-        hooks_ok="error:file-not-found"
-    fi
-
-    if [[ "$hooks_ok" == "yes" ]]; then
-        if [[ "$INST_LANG" == "es" ]]; then
-            log_success "Hooks registrados en settings.json"
-        else
-            log_success "Hooks registered in settings.json"
-        fi
-        checks_passed=$((checks_passed + 1))
-    else
-        if [[ "$INST_LANG" == "es" ]]; then
-            log_error "Hooks no configurados correctamente (${hooks_ok})"
-            echo -e "${BONE}    Remediar: claude /hooks  o volver a ejecutar install.sh${RESET}"
-        else
-            log_error "Hooks not properly configured (${hooks_ok})"
-            echo -e "${BONE}    Remediate: claude /hooks  or re-run install.sh${RESET}"
-        fi
-    fi
-
-    # 3. Check CLAUDE.md installed
-    if [[ -f "$CLAUDE_MD_DST" ]]; then
-        if [[ "$INST_LANG" == "es" ]]; then
-            log_success "CLAUDE.md instalado en ${CLAUDE_MD_DST}"
-        else
-            log_success "CLAUDE.md installed at ${CLAUDE_MD_DST}"
-        fi
-        checks_passed=$((checks_passed + 1))
-    else
-        if [[ "$INST_LANG" == "es" ]]; then
-            log_error "CLAUDE.md no encontrado en ${CLAUDE_MD_DST}"
-            echo -e "${BONE}    Remediar: cp ${CLAUDE_MD_SRC} ${CLAUDE_MD_DST}${RESET}"
-        else
-            log_error "CLAUDE.md not found at ${CLAUDE_MD_DST}"
-            echo -e "${BONE}    Remediate: cp ${CLAUDE_MD_SRC} ${CLAUDE_MD_DST}${RESET}"
-        fi
-    fi
-
-    # 4. Check mech command is accessible
-    if command -v mech &>/dev/null; then
-        if [[ "$INST_LANG" == "es" ]]; then
-            log_success "Comando 'mech' accesible en PATH"
-        else
-            log_success "'mech' command accessible in PATH"
-        fi
-        checks_passed=$((checks_passed + 1))
-    elif command -v mechcode &>/dev/null; then
-        if [[ "$INST_LANG" == "es" ]]; then
-            log_success "Comando 'mechcode' accesible (alias 'mech' requiere reiniciar terminal)"
-        else
-            log_success "'mechcode' accessible (alias 'mech' requires terminal restart)"
-        fi
-        checks_passed=$((checks_passed + 1))
-    elif [[ -x "$MECHCODE_BIN" ]]; then
-        if [[ "$INST_LANG" == "es" ]]; then
-            log_warning "'mech' no esta en PATH aun — reiniciar terminal o ejecutar:"
-        else
-            log_warning "'mech' not in PATH yet — restart terminal or run:"
-        fi
-        echo -e "${BONE}    source $(get_rc_file "$(detect_shell)")${RESET}"
-        # Count as pass since the file exists and is executable
-        checks_passed=$((checks_passed + 1))
-    else
-        if [[ "$INST_LANG" == "es" ]]; then
-            log_error "'mech' no encontrado — verificar instalacion"
-            echo -e "${BONE}    Remediar: volver a ejecutar install.sh${RESET}"
-        else
-            log_error "'mech' not found — verify installation"
-            echo -e "${BONE}    Remediate: re-run install.sh${RESET}"
-        fi
-    fi
-
-    # 5. Check hook runner script exists and is executable
-    if [[ -x "${HOOKS_DIR}/mechcode_hook.sh" ]]; then
-        if [[ "$INST_LANG" == "es" ]]; then
-            log_success "Hook runner ejecutable en ${HOOKS_DIR}"
-        else
-            log_success "Hook runner executable in ${HOOKS_DIR}"
-        fi
-        checks_passed=$((checks_passed + 1))
-    else
-        if [[ "$INST_LANG" == "es" ]]; then
-            log_error "Hook runner no encontrado o no ejecutable"
-            echo -e "${BONE}    Remediar: volver a ejecutar install.sh${RESET}"
-        else
-            log_error "Hook runner not found or not executable"
-            echo -e "${BONE}    Remediate: re-run install.sh${RESET}"
-        fi
-    fi
-
-    # Summary
-    echo ""
-    if [[ "$checks_passed" -eq "$checks_total" ]]; then
-        if [[ "$INST_LANG" == "es" ]]; then
-            log_success "${checks_passed}/${checks_total} verificaciones exitosas — Forja operativa"
-        else
-            log_success "${checks_passed}/${checks_total} checks passed — Forge operational"
-        fi
-    else
-        if [[ "$INST_LANG" == "es" ]]; then
-            log_warning "${checks_passed}/${checks_total} verificaciones exitosas — revisar items marcados"
-        else
-            log_warning "${checks_passed}/${checks_total} checks passed — review flagged items above"
-        fi
-    fi
-    echo -e "${DIM}──†──†──†──†──†──†──†──†──†──†──†──†──†──${RESET}"
-}
-
 # === MAIN ===
 
 main() {
-    # Detect OS early so check functions can use it
-    DETECTED_OS="$(detect_os)"
-
     print_banner
     print_disclaimer
 
     if [[ "$INST_LANG" == "es" ]]; then
-        log_info "Verificando sistema... (OS: ${DETECTED_OS})"
+        log_info "Verificando sistema..."
     else
-        log_info "Running system checks... (OS: ${DETECTED_OS})"
+        log_info "Running system checks..."
     fi
     echo ""
 
@@ -818,8 +550,6 @@ main() {
     echo ""
 
     show_success
-
-    post_install_validate
 }
 
 main "$@"

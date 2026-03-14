@@ -4,6 +4,8 @@ servoskull.py — Servo-Craneo Designatus
 Pixel art con Unicode half-block characters + ANSI true color.
 Supports full-size (standalone) and compact (sidebar) modes.
 """
+import math
+import random
 
 # === ANSI CODES ===
 RESET = "\033[0m"
@@ -43,6 +45,8 @@ CABLE_DK = (42, 47, 58)
 TEETH = (245, 242, 235)
 TEETH_DK = (200, 195, 182)
 RIVET = (100, 105, 118)
+SPARK_YELLOW = (255, 255, 80)
+SPARK_WHITE = (255, 245, 200)
 
 
 # === RENDER ENGINE ===
@@ -58,6 +62,18 @@ def _c(color, text):
 
 def lerp(a, b, t):
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+
+def _scale_color(color, intensity):
+    """Scale an RGB tuple by intensity, clamping to 0-255."""
+    if color is None:
+        return None
+    r, g, b = color
+    return (
+        min(255, max(0, int(r * intensity))),
+        min(255, max(0, int(g * intensity))),
+        min(255, max(0, int(b * intensity))),
+    )
 
 
 def render(canvas, pad=0):
@@ -157,7 +173,8 @@ def set_px(c, x, y, color):
 # ============================================================
 
 def build_compact(lens_color=None, lens_ring=None, lens_ring2=None,
-                  cable_glow=None):
+                  cable_glow=None, intensity=1.0, error_frame=0,
+                  thinking_phase=None):
     W, H = 28, 24
     CX, CY = 14, 7
     c = make_canvas(W, H)
@@ -212,16 +229,27 @@ def build_compact(lens_color=None, lens_ring=None, lens_ring2=None,
     fill_ellipse(c, rex, rey, 4, 2.8, METAL_DK)
     stroke_ellipse(c, rex, rey, 4, 2.8, METAL_SH, 1.2)
     fill_ellipse(c, rex, rey, 3, 2, VOID)
-    if lens_ring2:
-        fill_ellipse(c, rex, rey, 2.3, 1.5, lens_ring2)
-    if lens_ring:
-        fill_ellipse(c, rex, rey, 1.5, 1.0, lens_ring)
-    if lens_color:
-        fill_ellipse(c, rex, rey, 0.8, 0.6, lens_color)
+
+    # Apply thinking_phase interpolation to lens colors if provided
+    actual_lens = lens_color
+    actual_ring = lens_ring
+    actual_ring2 = lens_ring2
+    if thinking_phase is not None and lens_color is not None:
+        phase_val = math.sin(thinking_phase * math.pi)  # 0→0, 0.5→1, 1→0
+        actual_lens = lerp(ORANGE, (255, 255, 200), phase_val)
+        actual_ring = lerp(RED_DIM, ORANGE, phase_val)
+        actual_ring2 = lerp((80, 5, 0), (255, 80, 0), phase_val)
+
+    if actual_ring2:
+        fill_ellipse(c, rex, rey, 2.3, 1.5, actual_ring2)
+    if actual_ring:
+        fill_ellipse(c, rex, rey, 1.5, 1.0, actual_ring)
+    if actual_lens:
+        fill_ellipse(c, rex, rey, 0.8, 0.6, actual_lens)
         set_px(c, rex, rey, (
-            min(255, lens_color[0] + 80),
-            min(255, lens_color[1] + 80),
-            min(255, lens_color[2] + 80),
+            min(255, actual_lens[0] + 80),
+            min(255, actual_lens[1] + 80),
+            min(255, actual_lens[2] + 80),
         ))
 
     # --- NASAL CAVITY ---
@@ -265,8 +293,8 @@ def build_compact(lens_color=None, lens_ring=None, lens_ring2=None,
                 curve = max(0, dy) * 0.4
                 xl = int(CX - 13 + curve)
                 xr = int(CX + 13 - curve)
-                intensity = max(0, 1.0 - abs(dy) / 5.0)
-                col = lerp(CABLE_DK, cab, intensity * 0.8)
+                inten = max(0, 1.0 - abs(dy) / 5.0)
+                col = lerp(CABLE_DK, cab, inten * 0.8)
                 if 0 <= xl < W and c[y][xl] is None:
                     c[y][xl] = col
                 if 0 <= xr < W and c[y][xr] is None:
@@ -281,6 +309,17 @@ def build_compact(lens_color=None, lens_ring=None, lens_ring2=None,
             if 0 <= x < W:
                 c[y][x] = METAL if seg % 2 == 0 else METAL_DK
 
+    # --- POST-PROCESSING: Intensity scaling (breathing effect) ---
+    if intensity != 1.0:
+        for y in range(H):
+            for x in range(W):
+                if c[y][x] is not None:
+                    c[y][x] = _scale_color(c[y][x], intensity)
+
+    # --- POST-PROCESSING: Error sparks ---
+    if error_frame in (1, 2):
+        _apply_sparks(c, W, H, CX, CY, error_frame, compact=True)
+
     return c
 
 
@@ -290,7 +329,8 @@ def build_compact(lens_color=None, lens_ring=None, lens_ring2=None,
 # ============================================================
 
 def build_full(lens_color=None, lens_ring=None, lens_ring2=None,
-               cable_glow=None):
+               cable_glow=None, intensity=1.0, error_frame=0,
+               thinking_phase=None):
     W, H = 60, 48
     CX, CY = 30, 15
     c = make_canvas(W, H)
@@ -356,16 +396,27 @@ def build_full(lens_color=None, lens_ring=None, lens_ring2=None,
     fill_ellipse(c, right_ex, right_ey, 8, 5.5, METAL_DK)
     stroke_ellipse(c, right_ex, right_ey, 8, 5.5, METAL_SH, 1.5)
     fill_ellipse(c, right_ex, right_ey, 6.5, 4.2, VOID)
-    if lens_ring2:
-        fill_ellipse(c, right_ex, right_ey, 5, 3.2, lens_ring2)
-    if lens_ring:
-        fill_ellipse(c, right_ex, right_ey, 3.5, 2.3, lens_ring)
-    if lens_color:
-        fill_ellipse(c, right_ex, right_ey, 2, 1.3, lens_color)
+
+    # Apply thinking_phase interpolation to lens colors if provided
+    actual_lens = lens_color
+    actual_ring = lens_ring
+    actual_ring2 = lens_ring2
+    if thinking_phase is not None and lens_color is not None:
+        phase_val = math.sin(thinking_phase * math.pi)  # 0→0, 0.5→1, 1→0
+        actual_lens = lerp(ORANGE, (255, 255, 200), phase_val)
+        actual_ring = lerp(RED_DIM, ORANGE, phase_val)
+        actual_ring2 = lerp((80, 5, 0), (255, 80, 0), phase_val)
+
+    if actual_ring2:
+        fill_ellipse(c, right_ex, right_ey, 5, 3.2, actual_ring2)
+    if actual_ring:
+        fill_ellipse(c, right_ex, right_ey, 3.5, 2.3, actual_ring)
+    if actual_lens:
+        fill_ellipse(c, right_ex, right_ey, 2, 1.3, actual_lens)
         c[right_ey][right_ex] = (
-            min(255, lens_color[0] + 80),
-            min(255, lens_color[1] + 80),
-            min(255, lens_color[2] + 80),
+            min(255, actual_lens[0] + 80),
+            min(255, actual_lens[1] + 80),
+            min(255, actual_lens[2] + 80),
         )
 
     # --- NASAL CAVITY ---
@@ -424,22 +475,22 @@ def build_full(lens_color=None, lens_ring=None, lens_ring2=None,
             y = CY + 3 + dy + bundle
             if 0 <= y < H:
                 curve = max(0, dy - 1) * 0.5
-                intensity = 1.0 - abs(dy) / 8.0
+                inten = 1.0 - abs(dy) / 8.0
                 for dx_inner in range(2):
                     x = int(CX - 22 - b_offset + curve) - dx_inner
                     if 0 <= x < W and c[y][x] is None:
-                        c[y][x] = lerp(CABLE_DK, cab_col, max(0, intensity) * 0.85)
+                        c[y][x] = lerp(CABLE_DK, cab_col, max(0, inten) * 0.85)
     for bundle in range(3):
         b_offset = bundle * 2 - 2
         for dy in range(-5, 7):
             y = CY + 3 + dy + bundle
             if 0 <= y < H:
                 curve = max(0, dy - 1) * 0.5
-                intensity = 1.0 - abs(dy) / 8.0
+                inten = 1.0 - abs(dy) / 8.0
                 for dx_inner in range(2):
                     x = int(CX + 22 + b_offset - curve) + dx_inner
                     if 0 <= x < W and c[y][x] is None:
-                        c[y][x] = lerp(CABLE_DK, cab_col, max(0, intensity) * 0.85)
+                        c[y][x] = lerp(CABLE_DK, cab_col, max(0, inten) * 0.85)
 
     # --- SPINE ---
     spine_start = CY + 25
@@ -471,14 +522,65 @@ def build_full(lens_color=None, lens_ring=None, lens_ring2=None,
         if dy == 0 and 0 <= y < H:
             set_px(c, CX, y, METAL_SH)
 
+    # --- POST-PROCESSING: Intensity scaling (breathing effect) ---
+    if intensity != 1.0:
+        for y in range(H):
+            for x in range(W):
+                if c[y][x] is not None:
+                    c[y][x] = _scale_color(c[y][x], intensity)
+
+    # --- POST-PROCESSING: Error sparks ---
+    if error_frame in (1, 2):
+        _apply_sparks(c, W, H, CX, CY, error_frame, compact=False)
+
     return c
+
+
+# ============================================================
+#  SPARK GENERATOR — for ERROR flicker animation
+# ============================================================
+
+def _apply_sparks(canvas, W, H, CX, CY, error_frame, compact=True):
+    """Scatter spark pixels near cable and spine areas for error flicker."""
+    rng = random.Random(error_frame * 42)  # reproducible per frame
+
+    # Define spark zones: cable areas (left/right) and spine
+    if compact:
+        spark_zones = [
+            # Left cables
+            (0, CY - 2, CX - 10, CY + 6),
+            # Right cables
+            (CX + 10, CY - 2, W - 1, CY + 6),
+            # Spine area
+            (CX - 3, CY + 14, CX + 3, H - 1),
+        ]
+        num_sparks = 4 if error_frame == 1 else 8
+    else:
+        spark_zones = [
+            # Left cables
+            (0, CY - 4, CX - 18, CY + 8),
+            # Right cables
+            (CX + 18, CY - 4, W - 1, CY + 8),
+            # Spine area
+            (CX - 5, CY + 24, CX + 5, H - 1),
+        ]
+        num_sparks = 6 if error_frame == 1 else 14
+
+    for _ in range(num_sparks):
+        zone = rng.choice(spark_zones)
+        sx = rng.randint(zone[0], zone[2])
+        sy = rng.randint(zone[1], zone[3])
+        if 0 <= sx < W and 0 <= sy < H:
+            spark_col = rng.choice([SPARK_YELLOW, SPARK_WHITE, (255, 200, 50)])
+            canvas[sy][sx] = spark_col
 
 
 # ============================================================
 #  FRAME BUILDERS — compact=True for sidebar, False for full
 # ============================================================
 
-def get_frame(state="IDLE", compact=False):
+def get_frame(state="IDLE", compact=False, intensity=1.0,
+              error_frame=0, thinking_phase=None):
     frames = {
         "IDLE": _frame_idle,
         "THINKING": _frame_thinking,
@@ -489,46 +591,69 @@ def get_frame(state="IDLE", compact=False):
         "SUCCESS": _frame_success,
     }
     builder = frames.get(state, _frame_idle)
-    return builder(compact=compact)
+    return builder(compact=compact, intensity=intensity,
+                   error_frame=error_frame, thinking_phase=thinking_phase)
 
 
-def _frame_idle(compact=False):
+def _frame_idle(compact=False, intensity=1.0, error_frame=0,
+                thinking_phase=None):
     build = build_compact if compact else build_full
     pad = 1 if compact else 10
-    canvas = build(lens_color=None, lens_ring=METAL_DK, lens_ring2=METAL_SH)
+    # IDLE lens: grey tones that also pulse with intensity
+    canvas = build(lens_color=None, lens_ring=METAL_DK, lens_ring2=METAL_SH,
+                   intensity=intensity)
     return render(canvas, pad=pad)
 
 
-def _frame_thinking(compact=False):
+def _frame_thinking(compact=False, intensity=1.0, error_frame=0,
+                    thinking_phase=None):
     build = build_compact if compact else build_full
     pad = 1 if compact else 10
-    canvas = build(lens_color=ORANGE, lens_ring=RED_DIM, lens_ring2=(80, 5, 0))
+    canvas = build(lens_color=ORANGE, lens_ring=RED_DIM,
+                   lens_ring2=(80, 5, 0), intensity=intensity,
+                   thinking_phase=thinking_phase)
     return render(canvas, pad=pad)
 
 
-def _frame_thinking_2(compact=False):
+def _frame_thinking_2(compact=False, intensity=1.0, error_frame=0,
+                      thinking_phase=None):
     build = build_compact if compact else build_full
     pad = 1 if compact else 10
-    canvas = build(lens_color=ORANGE, lens_ring=(255, 80, 0), lens_ring2=RED_DIM)
+    canvas = build(lens_color=ORANGE, lens_ring=(255, 80, 0),
+                   lens_ring2=RED_DIM, intensity=intensity,
+                   thinking_phase=thinking_phase)
     return render(canvas, pad=pad)
 
 
-def _frame_thinking_3(compact=False):
+def _frame_thinking_3(compact=False, intensity=1.0, error_frame=0,
+                      thinking_phase=None):
     build = build_compact if compact else build_full
     pad = 1 if compact else 10
     canvas = build(
         lens_color=(255, 255, 200), lens_ring=ORANGE,
         lens_ring2=(255, 80, 0), cable_glow=ORANGE,
+        intensity=intensity, thinking_phase=thinking_phase,
     )
     return render(canvas, pad=pad)
 
 
-def _frame_error(compact=False):
+def _frame_error(compact=False, intensity=1.0, error_frame=0,
+                 thinking_phase=None):
     build = build_compact if compact else build_full
     pad = 1 if compact else 10
+
+    # Determine effective intensity based on error_frame
+    if error_frame == 1:
+        eff_intensity = intensity * 0.7
+    elif error_frame == 2:
+        eff_intensity = min(1.2, intensity * 1.2)
+    else:
+        eff_intensity = intensity
+
     canvas = build(
         lens_color=(255, 0, 0), lens_ring=RED,
         lens_ring2=RED_DARK, cable_glow=(160, 0, 0),
+        intensity=eff_intensity, error_frame=error_frame,
     )
     h = len(canvas)
     w = len(canvas[0]) if h > 0 else 0
@@ -540,10 +665,12 @@ def _frame_error(compact=False):
     return render(canvas, pad=pad)
 
 
-def _frame_success(compact=False):
+def _frame_success(compact=False, intensity=1.0, error_frame=0,
+                   thinking_phase=None):
     build = build_compact if compact else build_full
     pad = 1 if compact else 10
-    canvas = build(lens_color=GREEN, lens_ring=GREEN_DIM, lens_ring2=(0, 80, 20))
+    canvas = build(lens_color=GREEN, lens_ring=GREEN_DIM,
+                   lens_ring2=(0, 80, 20), intensity=intensity)
     h = len(canvas)
     w = len(canvas[0]) if h > 0 else 0
     for y in range(h):
@@ -574,5 +701,29 @@ if __name__ == "__main__":
         for state in ["IDLE", "THINKING", "THINKING_2", "THINKING_3", "ERROR", "SUCCESS"]:
             print(f"\n  === {state} ===")
             print(get_frame(state, compact=True))
+    elif len(sys.argv) > 1 and sys.argv[1] == "animate":
+        # Demo animation: show breathing IDLE, error flicker, thinking phase
+        import time
+        print("\n  === BREATHING IDLE (3 cycles) ===")
+        for i in range(18):
+            phase = math.sin(i * 0.35) * 0.5 + 0.5  # 0..1
+            inten = 0.6 + phase * 0.4  # 0.6..1.0
+            sys.stdout.write("\033[2J\033[H")
+            print(f"  intensity={inten:.2f}")
+            print(get_frame("IDLE", compact=True, intensity=inten))
+            time.sleep(0.15)
+        print("\n  === ERROR FLICKER (4 frames) ===")
+        for ef in range(4):
+            sys.stdout.write("\033[2J\033[H")
+            print(f"  error_frame={ef}")
+            print(get_frame("ERROR", compact=True, error_frame=ef))
+            time.sleep(0.5)
+        print("\n  === THINKING PHASE (smooth) ===")
+        for i in range(20):
+            tp = (i % 20) / 20.0
+            sys.stdout.write("\033[2J\033[H")
+            print(f"  thinking_phase={tp:.2f}")
+            print(get_frame("THINKING", compact=True, thinking_phase=tp))
+            time.sleep(0.15)
     else:
         print_all_frames()

@@ -5,9 +5,19 @@ Reads tool call info from stdin, writes state to ~/.mechcode_state.json
 for the servo-skull monitor to display.
 """
 import json
+import os
 import sys
+import tempfile
 import time
 from pathlib import Path
+
+DEBUG = os.environ.get("MECHCODE_DEBUG") == "1"
+
+
+def debug_log(msg):
+    """Log to stderr only when MECHCODE_DEBUG=1."""
+    if DEBUG:
+        print(f"[mechcode_hook] {msg}", file=sys.stderr, flush=True)
 
 STATE_FILE = Path.home() / ".mechcode_state.json"
 
@@ -39,9 +49,11 @@ AGENT_TYPE_NAMES = {
 def load_state():
     try:
         if STATE_FILE.exists():
-            return json.loads(STATE_FILE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        pass
+            data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            debug_log(f"State loaded: main_state={data.get('main_state')}")
+            return data
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"[mechcode_hook] Failed to load state: {e}", file=sys.stderr, flush=True)
     return new_state()
 
 
@@ -64,13 +76,29 @@ def new_state():
 
 
 def save_state(state):
+    """Atomic write: temp file + os.rename to prevent corruption mid-read."""
     try:
-        STATE_FILE.write_text(
-            json.dumps(state, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        content = json.dumps(state, ensure_ascii=False, indent=2)
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(STATE_FILE.parent), suffix=".tmp", prefix=".mechstate_"
         )
-    except OSError:
-        pass
+        try:
+            os.write(fd, content.encode("utf-8"))
+            os.close(fd)
+            os.replace(tmp_path, str(STATE_FILE))
+            debug_log(f"State saved: main_state={state.get('main_state')}")
+        except OSError as e:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            print(f"[mechcode_hook] Failed to save state: {e}", file=sys.stderr, flush=True)
+    except OSError as e:
+        print(f"[mechcode_hook] Failed to create temp file: {e}", file=sys.stderr, flush=True)
 
 
 def extract_detail(tool, tool_input):
@@ -97,13 +125,16 @@ def extract_detail(tool, tool_input):
 
 def main():
     try:
-        data = json.loads(sys.stdin.read())
-    except (json.JSONDecodeError, EOFError):
+        raw = sys.stdin.read()
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError, EOFError) as e:
+        print(f"[mechcode_hook] Failed to parse stdin: {e}", file=sys.stderr, flush=True)
         return
 
     event = data.get("hook_event_name", "")
     tool = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
+    debug_log(f"Event received: {event} tool={tool}")
 
     state = load_state()
     state["timestamp"] = time.time()
@@ -161,4 +192,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"[mechcode_hook] Unexpected error: {e}", file=sys.stderr, flush=True)
+    finally:
+        sys.exit(0)
